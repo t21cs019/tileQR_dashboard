@@ -28,7 +28,7 @@ _CSV_COLS = ["threads", "size", "nb", "ib", "GFlops"]
 _META_COLS = [
     "source_key", "host", "label", "cpu_model",
     "sockets", "cores_per_socket", "threads_per_core", "numa_nodes",
-    "l1d_per_core_kb", "l2_per_core_kb", "l3_total_mb",
+    "l1d_per_core_kb", "l2_per_core_kb", "l3_per_socket_mb",
     "src_file",
 ]
 
@@ -68,6 +68,12 @@ def resolve_meta(
             cpu = preset
         # 見つからなければ cpu は空のまま → 下で source.cpu を model_name として使う
 
+    # l3_per_socket_mb が無ければ旧キー l3_total_mb をその値として読む
+    # （EPYCでは l3_total_mb は実際には「1ソケットあたり」の値だったため改名）
+    l3_per_socket_mb = cpu.get("l3_per_socket_mb")
+    if l3_per_socket_mb is None:
+        l3_per_socket_mb = cpu.get("l3_total_mb")
+
     return {
         "source_key": source.key,
         "host": host,
@@ -79,7 +85,7 @@ def resolve_meta(
         "numa_nodes": cpu.get("numa_nodes"),
         "l1d_per_core_kb": cpu.get("l1d_per_core_kb"),
         "l2_per_core_kb": cpu.get("l2_per_core_kb"),
-        "l3_total_mb": cpu.get("l3_total_mb"),
+        "l3_per_socket_mb": l3_per_socket_mb,
         "src_file": csv_path.name,
     }
 

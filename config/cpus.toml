@@ -16,4 +16,4 @@ threads_per_core = 1
 numa_nodes      = 8
 l1d_per_core_kb = 32
 l2_per_core_kb  = 512
-l3_total_mb     = 256
+l3_per_socket_mb = 256  # 1ソケットあたりのL3（EPYCは「総L3」ではなくこちら）
