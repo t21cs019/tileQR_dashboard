@@ -39,3 +39,23 @@ def best_per_nb(g: pd.DataFrame) -> pd.DataFrame:
     """各 nb について GFlops 最大の行を選び、nb 昇順で返す（最適ib選択）。"""
     idx = g.groupby("nb")["GFlops"].idxmax()
     return g.loc[idx].sort_values("nb")
+
+
+def aggregate_runs(
+    df: pd.DataFrame,
+    label: str,
+    threads: int,
+    size: int,
+    hosts: list[str] | None = None,
+) -> pd.DataFrame:
+    """(label, threads, size) で絞り込み、(nb, ib) ごとに GFlops を平均する。
+
+    複数 host／複数試行が同じ (nb, ib) を計測していても1点に集約される。
+    hosts: 指定すると更にそのホスト集合に絞る（v0.5.0 のホスト内訳表示用、今は省略可）。
+    """
+    sub = df[
+        (df["label"] == label) & (df["threads"] == threads) & (df["size"] == size)
+    ]
+    if hosts:
+        sub = sub[sub["host"].isin(hosts)]
+    return sub.groupby(["nb", "ib"], as_index=False)["GFlops"].mean()
