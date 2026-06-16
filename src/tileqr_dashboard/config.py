@@ -66,3 +66,16 @@ def load_sources(toml_path: Path | None = None) -> dict[str, Source]:
             },
         )
     return sources
+
+
+def load_cpus(toml_path: Path | None = None) -> dict[str, dict]:
+    """cpus.toml をパースして {key: cpu諸元dict} を返す。
+
+    ファイルが無ければ空dictを返す（CPUプリセットは任意機能のため）。
+    """
+    toml_path = toml_path or paths.CPUS_TOML
+    if not toml_path.exists():
+        return {}
+
+    with toml_path.open("rb") as f:
+        return tomllib.load(f)
