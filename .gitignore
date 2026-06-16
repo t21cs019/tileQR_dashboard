@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.py[oc]
+.venv/
+*.egg-info/
+
+# 取り込みデータ・生成物（マシンごとに異なるため除外）
+inbox/onedrive/**
+inbox/manual/**
+store/*.parquet
+output/*.png
+output/*.pdf
+
+# inbox/ のサブフォルダ自体は残す（.gitkeep）
+!inbox/onedrive/.gitkeep
+!inbox/manual/.gitkeep

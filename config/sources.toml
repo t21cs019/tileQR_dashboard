@@ -1,0 +1,32 @@
+# ============================================================
+# ソース定義 — サーバ1台 = 1ブロック [sources.<key>]
+#
+#   type   : "manual"   手動でCSVをinboxに置く（疎通困難なサーバ）
+#            "onedrive" rcloneでOneDriveから自動pull
+#   inbox  : 取り込み待ちフォルダ（プロジェクトルートからの相対 or 絶対）
+#   label  : グラフ・表に表示する名前
+#   remote : (onedriveのみ) rcloneのリモートパス
+#   cpu    : (任意) メタJSONが無いCSV向けの保険ラベル
+# ============================================================
+
+# --- AOBA-B: 外部疎通が難しいので手動運用 ---
+# AOBAのNextcloudからCSV(と、あればmeta.json)をDLして
+# inbox/manual/aoba_b に置く
+[sources.aoba_b]
+type  = "manual"
+inbox = "inbox/manual/aoba_b"
+label = "AOBA-B"
+cpu   = "AMD EPYC 7702"
+
+# --- calc: 大学LAN内・外部疎通可 → OneDrive経由で自動pull ---
+[sources.calc]
+type   = "onedrive"
+remote = "onedrive:tileQR_results/calc"
+inbox  = "inbox/onedrive/calc"
+label  = "calc (研究室サーバ)"
+
+# --- 将来サーバを足すときはこのブロックをコピーするだけ ---
+# [sources.newsrv]
+# type  = "manual"
+# inbox = "inbox/manual/newsrv"
+# label = "新サーバ"
