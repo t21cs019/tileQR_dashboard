@@ -1,6 +1,6 @@
 [project]
 name = "tileqr-dashboard"
-version = "0.2.0"
+version = "0.3.0"
 description = "PLASMA tileQR ベンチマーク結果の集約・可視化ダッシュボード"
 readme = "README.md"
 requires-python = ">=3.11"

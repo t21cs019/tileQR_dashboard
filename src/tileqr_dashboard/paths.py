@@ -8,6 +8,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 CONFIG_DIR = ROOT / "config"
 SOURCES_TOML = CONFIG_DIR / "sources.toml"
+CPUS_TOML = CONFIG_DIR / "cpus.toml"
 
 INBOX_DIR = ROOT / "inbox"
 STORE_DIR = ROOT / "store"

@@ -1,9 +1,12 @@
 """inbox 配下の CSV とメタJSON を読み、統合テーブル(parquet)を作る。
 
 メタの解決順位:
-  1. <csv名>.meta.json があればそれを使う
-  2. 無ければ sources.toml の該当ソース定義（label, cpu）で補完
-  3. host はファイル名先頭トークン（例 par001_... → par001）
+  1. <csv名>.meta.json があればそれを使う（最優先）
+  2. 無ければ source.cpu を cpus.toml のキーとして引く
+     - 見つかれば model_name・sockets・cores・キャッシュまで全部補完
+     - 見つからなければ source.cpu を model_name 文字列として扱う
+       （従来動作。この場合キャッシュ等は空のまま）
+  3. host はファイル名先頭トークン（例 par001_... → par001）か meta.host
 
 メタが全く無いCSVでも、host / label / GFlops は埋まるので
 ヒートマップや比較表は作れる（CPUキャッシュ依存の散布図だけ欠ける）。
@@ -16,7 +19,7 @@ from pathlib import Path
 import pandas as pd
 
 from . import paths
-from .config import Source, load_sources
+from .config import Source, load_cpus, load_sources
 
 # CSV本体に必ずある列
 _CSV_COLS = ["threads", "size", "nb", "ib", "GFlops"]
@@ -35,19 +38,35 @@ def _meta_path(csv_path: Path) -> Path:
     return csv_path.parent / (csv_path.stem + ".meta.json")
 
 
-def resolve_meta(csv_path: Path, source: Source) -> dict:
-    """1つのCSVに付与するメタ情報を解決する。"""
+def resolve_meta(
+    csv_path: Path, source: Source, cpus: dict[str, dict] | None = None
+) -> dict:
+    """1つのCSVに付与するメタ情報を解決する。
+
+    cpus: cpus.toml の内容（{preset_key: 諸元dict}）。省略時は読み込む。
+    """
     meta: dict = {}
     mp = _meta_path(csv_path)
-    if mp.exists():
+    has_meta_file = mp.exists()
+    if has_meta_file:
         try:
             meta = json.loads(mp.read_text(encoding="utf-8"))
         except json.JSONDecodeError as e:
             print(f"  [warn] {mp.name}: JSON解析失敗 ({e}) — 無視します")
             meta = {}
+            has_meta_file = False  # 解析失敗時はプリセット解決にフォールバック
 
     cpu = meta.get("cpu", {}) or {}
     host = meta.get("host") or csv_path.stem.split("_")[0]
+
+    if not has_meta_file:
+        # meta.json が無い（or 解析失敗）→ source.cpu を cpus.toml のキーとして引く
+        if cpus is None:
+            cpus = load_cpus()
+        preset = cpus.get(source.cpu) if source.cpu else None
+        if preset:
+            cpu = preset
+        # 見つからなければ cpu は空のまま → 下で source.cpu を model_name として使う
 
     return {
         "source_key": source.key,
@@ -65,7 +84,9 @@ def resolve_meta(csv_path: Path, source: Source) -> dict:
     }
 
 
-def _read_one(csv_path: Path, source: Source) -> pd.DataFrame | None:
+def _read_one(
+    csv_path: Path, source: Source, cpus: dict[str, dict]
+) -> pd.DataFrame | None:
     try:
         df = pd.read_csv(csv_path)
     except Exception as e:  # noqa: BLE001
@@ -78,7 +99,7 @@ def _read_one(csv_path: Path, source: Source) -> pd.DataFrame | None:
         return None
 
     df = df[_CSV_COLS].copy()
-    meta = resolve_meta(csv_path, source)
+    meta = resolve_meta(csv_path, source, cpus)
     for col, val in meta.items():
         df[col] = val
     return df
@@ -105,9 +126,10 @@ def build_store(sources: dict[str, Source] | None = None) -> pd.DataFrame:
         empty = pd.DataFrame(columns=_CSV_COLS + _META_COLS)
         return empty
 
+    cpus = load_cpus()
     frames = []
     for csv_path, source in items:
-        df = _read_one(csv_path, source)
+        df = _read_one(csv_path, source, cpus)
         if df is not None:
             frames.append(df)
             print(f"  [ok] {source.key}: {csv_path.name} ({len(df)} 行)")

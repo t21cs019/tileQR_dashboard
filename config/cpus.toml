@@ -1,0 +1,19 @@
+# ============================================================
+# CPU諸元のプリセット集 — サーバ1台 = 1ブロック [<key>]
+#
+# sources.toml の cpu には、ここのキー（例: epyc_7702）を書く。
+# ingest.py の resolve_meta がこのキーを引いて
+# model_name・sockets・cores・キャッシュなどを自動補完する。
+#
+# 将来CPUを足すときはこのブロックをコピーするだけ。
+# ============================================================
+
+[epyc_7702]
+model_name      = "AMD EPYC 7702 64-Core Processor"
+sockets         = 2
+cores_per_socket = 64
+threads_per_core = 1
+numa_nodes      = 8
+l1d_per_core_kb = 32
+l2_per_core_kb  = 512
+l3_total_mb     = 256
