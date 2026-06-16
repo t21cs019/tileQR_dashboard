@@ -31,6 +31,11 @@ def _parquet_mtime() -> float:
     return p.stat().st_mtime if p.exists() else 0.0
 
 
+def _png_export_config(filename: str) -> dict:
+    """図右上のカメラアイコンから落とせるPNGのファイル名・解像度を指定する。"""
+    return {"toImageButtonOptions": {"format": "png", "filename": filename, "scale": 2}}
+
+
 st.title("tileQR ベンチマーク ダッシュボード")
 
 with st.sidebar:
@@ -81,7 +86,10 @@ with tab_heatmap:
 
     fig = plots.heatmap_fig(df, hm_label, int(hm_threads), int(hm_size))
     if fig is not None:
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(
+            fig, use_container_width=True,
+            config=_png_export_config("tileqr_heatmap"),
+        )
     else:
         st.info("該当データがありません。")
 
@@ -106,7 +114,10 @@ with tab_line:
     ]
     fig = plots.line_fig(df, line_combos)
     if fig is not None:
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(
+            fig, use_container_width=True,
+            config=_png_export_config("tileqr_line"),
+        )
     else:
         st.info("該当データがありません。")
 
@@ -120,7 +131,10 @@ with tab_analysis:
 
     fig = plots.scatter_fig(df, int(sc_threads), int(sc_size))
     if fig is not None:
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(
+            fig, use_container_width=True,
+            config=_png_export_config("tileqr_scatter"),
+        )
     else:
         st.info(
             "CPUキャッシュ情報（メタJSON または cpus.toml プリセット）を持つ"
