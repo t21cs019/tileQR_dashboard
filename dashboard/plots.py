@@ -1,4 +1,8 @@
-"""Plotly 図ビルダ（Streamlit から独立してテストできる純関数群）。"""
+"""Plotly 図ビルダ（Streamlit から独立してテストできる純関数群）。
+
+識別単位は host ではなく (label, threads, size)。同じ組み合わせの中で
+複数 host／試行を (nb, ib) ごとに平均してから描画する（metrics.aggregate_runs）。
+"""
 from __future__ import annotations
 
 import numpy as np
@@ -8,15 +12,17 @@ import plotly.graph_objects as go
 from tileqr_dashboard import metrics
 
 
-def heatmap_fig(df: pd.DataFrame, host: str, threads: int) -> go.Figure | None:
-    """nb × ib の GFlops ヒートマップ。ホバーで nb/ib/GFlops を表示。"""
-    sub = df[(df["host"] == host) & (df["threads"] == threads)]
-    if sub.empty:
+def heatmap_fig(df: pd.DataFrame, label: str, threads: int, size: int) -> go.Figure | None:
+    """nb × ib の GFlops ヒートマップ。ホバーで nb/ib/GFlops を表示。
+
+    同じ (label, threads, size) の複数 host／試行は (nb, ib) ごとに平均する。
+    """
+    agg = metrics.aggregate_runs(df, label, threads, size)
+    if agg.empty:
         return None
 
-    pivot = metrics.heatmap_pivot(sub)
-    best = metrics.best_row(sub)
-    label = sub["label"].iloc[0]
+    pivot = metrics.heatmap_pivot(agg)
+    best = metrics.best_row(agg)
 
     fig = go.Figure(
         go.Heatmap(
@@ -42,7 +48,7 @@ def heatmap_fig(df: pd.DataFrame, host: str, threads: int) -> go.Figure | None:
         )
     )
     fig.update_layout(
-        title=f"{label} [{host}]  threads={threads}",
+        title=f"{label}  threads={threads}  size={size}",
         xaxis_title="nb (tile size)",
         yaxis_title="ib (inner block size)",
         height=600,
@@ -51,17 +57,26 @@ def heatmap_fig(df: pd.DataFrame, host: str, threads: int) -> go.Figure | None:
     return fig
 
 
-def scatter_fig(df: pd.DataFrame) -> go.Figure | None:
-    """コアあたりキャッシュ量 × 最適 nb。理論曲線と実用域を重ねる。"""
+def scatter_fig(df: pd.DataFrame, threads: int, size: int) -> go.Figure | None:
+    """コアあたりキャッシュ量 × 最適 nb（threads, size固定。点は label 単位）。
+
+    理論曲線と実用域を重ねる。
+    """
+    sub = df[(df["threads"] == threads) & (df["size"] == size)]
+    if sub.empty:
+        return None
+
     rows = []
-    for (host, threads), g in df.groupby(["host", "threads"]):
+    for label, g in sub.groupby("label"):
         cache_mb = metrics.cache_per_core_mb(g.iloc[0])
         if cache_mb is None:
             continue
-        best = metrics.best_row(g)
+        agg = metrics.aggregate_runs(df, label, threads, size)
+        if agg.empty:
+            continue
+        best = metrics.best_row(agg)
         rows.append({
-            "host": host,
-            "threads": int(threads),
+            "label": label,
             "cache": cache_mb,
             "nb": int(best["nb"]),
             "gflops": float(best["GFlops"]),
@@ -88,21 +103,20 @@ def scatter_fig(df: pd.DataFrame) -> go.Figure | None:
         line=dict(dash="dash", color="gray"),
         name="理論値 nb≈√(cache/32)", hoverinfo="skip",
     ))
-    # 実測点（スレッド別）
-    for threads, g in pts.groupby("threads"):
-        fig.add_trace(go.Scatter(
-            x=g["cache"], y=g["nb"], mode="markers+text",
-            text=g["host"], textposition="top center",
-            marker=dict(size=13), name=f"{threads} threads",
-            customdata=g["gflops"],
-            hovertemplate=(
-                "%{text}<br>cache/core=%{x:.2f} MB<br>"
-                "best nb=%{y}<br>%{customdata:.1f} GFlop/s<extra></extra>"
-            ),
-        ))
+    # 実測点（label別）
+    fig.add_trace(go.Scatter(
+        x=pts["cache"], y=pts["nb"], mode="markers+text",
+        text=pts["label"], textposition="top center",
+        marker=dict(size=13), name="実測",
+        customdata=pts["gflops"],
+        hovertemplate=(
+            "%{text}<br>cache/core=%{x:.2f} MB<br>"
+            "best nb=%{y}<br>%{customdata:.1f} GFlop/s<extra></extra>"
+        ),
+    ))
 
     fig.update_layout(
-        title="コアあたりキャッシュ量 × 最適タイルサイズ nb",
+        title=f"コアあたりキャッシュ量 × 最適タイルサイズ nb（threads={threads}, size={size}）",
         xaxis_title="コアあたりキャッシュ量 (MB)",
         yaxis_title="最適 nb（GFlops最大）",
         height=600, margin=dict(l=60, r=20, t=50, b=50),
@@ -111,50 +125,63 @@ def scatter_fig(df: pd.DataFrame) -> go.Figure | None:
 
 
 def compare_df(df: pd.DataFrame) -> pd.DataFrame:
-    """host × threads の比較表（st.dataframe 用）。"""
+    """(label, threads, size) ごとの比較表（st.dataframe 用）。1組み合わせ=1行。"""
     rows = []
-    for (host, threads), g in df.groupby(["host", "threads"]):
-        best = metrics.best_row(g)
-        cpu = g["cpu_model"].iloc[0]
+    combos = df[["label", "threads", "size"]].drop_duplicates()
+    for _, combo in combos.iterrows():
+        label, threads, size = combo["label"], int(combo["threads"]), int(combo["size"])
+        agg = metrics.aggregate_runs(df, label, threads, size)
+        if agg.empty:
+            continue
+        best = metrics.best_row(agg)
+        sub = df[(df["label"] == label) & (df["threads"] == threads) & (df["size"] == size)]
+        cpu = sub["cpu_model"].iloc[0]
         rows.append({
-            "ホスト": host,
-            "ラベル": g["label"].iloc[0],
+            "ラベル": label,
             "CPU": "—" if pd.isna(cpu) else cpu,
-            "スレッド": int(threads),
+            "スレッド": threads,
+            "サイズ": size,
+            "ホスト数": int(sub["host"].nunique()),
             "ピーク GFlop/s": round(float(best["GFlops"]), 1),
             "最適 nb": int(best["nb"]),
             "最適 ib": int(best["ib"]),
         })
     out = pd.DataFrame(rows)
     if not out.empty:
-        out = out.sort_values(["ホスト", "スレッド"]).reset_index(drop=True)
+        out = out.sort_values(["ラベル", "スレッド", "サイズ"]).reset_index(drop=True)
     return out
 
 
 def line_fig(
     df: pd.DataFrame,
     threads: int,
-    hosts: list[str] | None = None,
+    size: int,
+    labels: list[str] | None = None,
 ) -> go.Figure | None:
-    """nb × GFlops 折れ線（各nbで最適ib選択、host別系列）。ホバーで値表示。"""
-    sub = df[df["threads"] == threads]
-    if hosts:
-        sub = sub[sub["host"].isin(hosts)]
-    if sub.empty:
-        return None
+    """nb × GFlops 折れ線（各nbで最適ib選択、label別系列。threads, size固定）。"""
+    label_opts = labels or sorted(
+        df[(df["threads"] == threads) & (df["size"] == size)]["label"].dropna().unique()
+    )
 
     fig = go.Figure()
-    for host, g in sub.groupby("host"):
-        bb = metrics.best_per_nb(g)
-        name = f"{g['label'].iloc[0]} [{host}]"
+    plotted = False
+    for label in label_opts:
+        agg = metrics.aggregate_runs(df, label, threads, size)
+        if agg.empty:
+            continue
+        bb = metrics.best_per_nb(agg)
         fig.add_trace(go.Scatter(
             x=bb["nb"], y=bb["GFlops"], mode="lines+markers",
-            name=name, marker=dict(size=5),
-            hovertemplate=f"{host}<br>nb=%{{x}}<br>%{{y:.1f}} GFlop/s<extra></extra>",
+            name=label, marker=dict(size=5),
+            hovertemplate=f"{label}<br>nb=%{{x}}<br>%{{y:.1f}} GFlop/s<extra></extra>",
         ))
+        plotted = True
+
+    if not plotted:
+        return None
 
     fig.update_layout(
-        title=f"nb × GFlops（threads={threads}, 各nbで最適ib選択）",
+        title=f"nb × GFlops（threads={threads}, size={size}, 各nbで最適ib選択）",
         xaxis_title="nb (tile size)",
         yaxis_title="GFlop/s",
         height=600, margin=dict(l=60, r=20, t=50, b=50),

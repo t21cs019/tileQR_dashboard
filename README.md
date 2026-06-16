@@ -87,12 +87,16 @@ AOBA-B は Nextcloud から CSV を DL して `inbox/manual/aoba_b/` に置く�
 
 ```bash
 bash run_viz.sh all                              # 全部
-bash run_viz.sh heatmap --host par001 --threads 128
+bash run_viz.sh heatmap --label AOBA-B --threads 128 --size 8192
 bash run_viz.sh heatmap --all
-bash run_viz.sh line                             # nb×GFlops 折れ線（CPU比較）
-bash run_viz.sh scatter                          # メタ(キャッシュ情報)が必要
+bash run_viz.sh line --threads 64 --size 8192    # nb×GFlops 折れ線（CPU比較）
+bash run_viz.sh scatter --threads 64 --size 8192 # メタ(キャッシュ情報)が必要
 bash run_viz.sh compare                          # 16:9, 日本語(NotoSansCJK)
 ```
+
+識別単位は host ではなく CPU(label) / threads / size。同じ組み合わせの
+複数 host／試行は (nb, ib) ごとに GFlops を平均してから描画する。
+`--threads`/`--size` を省略すると全組み合わせを生成する（`heatmap` は `--all`）。
 
 ### 4. Webダッシュボード（研究室機での常時表示向け）
 
@@ -102,11 +106,13 @@ bash run_dashboard.sh --server.address 0.0.0.0    # 大学LAN/Tailscaleに公開
 ```
 
 Plotly でホバー（nb/ib/GFlops 表示）とズームに対応。4タブ構成。
+識別単位は host ではなく CPU(label) / threads / size。同じ組み合わせの
+複数 host／試行は (nb, ib) ごとに GFlops を平均してから描画する。
 
-- 概要：CPU別ピーク性能の比較表
-- ホスト詳細：host / threads を選んで nb×ib ヒートマップ
-- nb-GFlops曲線：threads を選び、CPU(host)別に nb×GFlops を重ねて比較
-- 分析：キャッシュ量 × 最適nb 散布図（理論曲線つき）
+- 概要：(label, threads, size) ごとのピーク性能比較表
+- ヒートマップ：CPU(label) / threads / size を選んで nb×ib ヒートマップ
+- nb-GFlops曲線：threads / size を選び、CPU(label)別に nb×GFlops を重ねて比較
+- 分析：threads / size を選び、キャッシュ量 × 最適nb 散布図（理論曲線つき、点はlabel単位）
 
 `run_sync.sh` で取り込んだ後、サイドバーの「データ再読み込み」で最新化される。
 
@@ -182,3 +188,10 @@ loginctl enable-linger "$USER"        # ログアウト後も動かす
 
 セマンティックバージョニングに従う。方針は [VERSIONING.md](VERSIONING.md)、
 今後の予定・TODO は [ROADMAP.md](ROADMAP.md) を参照。
+
+
+## 日本語フォントは直しておくのがおすすめ
+「NotoSansCJK 未検出」の警告は環境差ですが、放っておくと compare 表や散布図の日本語ラベルが豆腐（□□□）になるので、研究室機の WSL2 に入れておくといいです。
+bashsudo apt update && sudo apt install -y fonts-noto-cjk
+rm -rf ~/.cache/matplotlib     # matplotlibのフォントキャッシュをクリア
+これで fonts.py が "Noto Sans CJK JP" を拾うようになり、警告も消えて日本語が正しく出ます（研究室デスクトップの WSL2 なら sudo は使えるはずです）。ダッシュボード（Plotly）側はブラウザのフォントで出るので元々問題ないはずですが、PNG出力（run_viz.sh）の方が効いてきます。
