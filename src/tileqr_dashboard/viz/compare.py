@@ -1,7 +1,7 @@
-"""CPU/ホスト比較表をスライド向け(16:9)の画像として出力する。
+"""CPU/ベンチマーク比較表をスライド向け(16:9)の画像として出力する。
 
-host × threads ごとに、ピーク GFlops と最適 (nb, ib)、
-（メタがあれば）CPU 名やキャッシュ情報を表にまとめる。
+(label, threads, size) ごとに1行。ピーク GFlops と最適 (nb, ib)、
+（メタ/プリセットがあれば）CPU 名、集約に使った host 数をまとめる。
 """
 from __future__ import annotations
 
@@ -13,12 +13,12 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 import pandas as pd  # noqa: E402
 
-from .. import paths  # noqa: E402
+from .. import metrics, paths  # noqa: E402
 from .fonts import setup_japanese_font  # noqa: E402
 
 _COLUMNS = [
-    "ホスト", "ラベル", "CPU", "スレッド",
-    "ピーク GFlop/s", "最適 nb", "最適 ib",
+    "ラベル", "CPU", "スレッド", "サイズ",
+    "ホスト数", "ピーク GFlop/s", "最適 nb", "最適 ib",
 ]
 
 
@@ -28,20 +28,26 @@ def _na(v) -> str:
 
 def _build_rows(df: pd.DataFrame) -> list[list[str]]:
     rows = []
-    grouped = df.groupby(["host", "threads"])
-    for (host, threads), g in grouped:
-        best = g.loc[g["GFlops"].idxmax()]
+    combos = df[["label", "threads", "size"]].drop_duplicates()
+    for _, combo in combos.iterrows():
+        label, threads, size = combo["label"], int(combo["threads"]), int(combo["size"])
+        agg = metrics.aggregate_runs(df, label, threads, size)
+        if agg.empty:
+            continue
+        best = agg.loc[agg["GFlops"].idxmax()]
+        sub = df[(df["label"] == label) & (df["threads"] == threads) & (df["size"] == size)]
         rows.append([
-            host,
-            _na(g["label"].iloc[0]),
-            _na(g["cpu_model"].iloc[0]),
-            str(int(threads)),
+            label,
+            _na(sub["cpu_model"].iloc[0]),
+            str(threads),
+            str(size),
+            str(int(sub["host"].nunique())),
             f"{best['GFlops']:.1f}",
             str(int(best["nb"])),
             str(int(best["ib"])),
         ])
-    # ホスト名→スレッド数の順でソート
-    rows.sort(key=lambda r: (r[0], int(r[3])))
+    # ラベル→スレッド→サイズ の順でソート
+    rows.sort(key=lambda r: (r[0], int(r[2]), int(r[3])))
     return rows
 
 
@@ -55,7 +61,7 @@ def make_compare(df: pd.DataFrame, out_png: Path | None = None) -> Path | None:
 
     fig, ax = plt.subplots(figsize=(12.8, 7.2))  # 16:9
     ax.axis("off")
-    ax.set_title("CPU別 tileQR ベンチマーク比較（size=4096, dgeqrf）",
+    ax.set_title("CPU別 tileQR ベンチマーク比較（dgeqrf）",
                  fontsize=16, pad=20)
 
     table = ax.table(cellText=rows, colLabels=_COLUMNS,
