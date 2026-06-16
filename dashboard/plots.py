@@ -57,27 +57,36 @@ def heatmap_fig(df: pd.DataFrame, label: str, threads: int, size: int) -> go.Fig
     return fig
 
 
-def scatter_fig(df: pd.DataFrame, threads: int, size: int) -> go.Figure | None:
-    """コアあたりキャッシュ量 × 最適 nb（threads, size固定。点は label 単位）。
+_AOBA_COLOR = "#e07b00"
+_OTHER_COLOR = "steelblue"
 
-    理論曲線と実用域を重ねる。
+
+def scatter_fig(df: pd.DataFrame, combos: list[tuple[str, int, int]]) -> go.Figure | None:
+    """nb × スレッドあたりキャッシュ量。
+
+    combos: (label, threads, size) のリスト。各組を1点としてプロットする
+    （line_fig と同じ選び方。host横断で集約してから最適nbを選ぶ）。
+    理論帯 nb≈√(cache×ratio/32) の25〜75%帯と50%ラインを重ねる。
+    label に "AOBA" を含むものは別色・別マーカー（cache_vs_tile_v3.py のスタイル）。
     """
-    sub = df[(df["threads"] == threads) & (df["size"] == size)]
-    if sub.empty:
-        return None
-
     rows = []
-    for label, g in sub.groupby("label"):
-        cache_mb = metrics.cache_per_core_mb(g.iloc[0])
-        if cache_mb is None:
+    for label, threads, size in combos:
+        sub = df[(df["label"] == label) & (df["threads"] == threads) & (df["size"] == size)]
+        if sub.empty:
+            continue
+        cache_kb = metrics.cache_per_thread_kb(sub.iloc[0], threads)
+        if cache_kb is None:
             continue
         agg = metrics.aggregate_runs(df, label, threads, size)
         if agg.empty:
             continue
-        best = metrics.best_row(agg)
+        bb = metrics.best_per_nb(agg)
+        best = metrics.best_row(bb)
         rows.append({
             "label": label,
-            "cache": cache_mb,
+            "threads": threads,
+            "size": size,
+            "cache_kb": cache_kb,
             "nb": int(best["nb"]),
             "gflops": float(best["GFlops"]),
         })
@@ -86,40 +95,61 @@ def scatter_fig(df: pd.DataFrame, threads: int, size: int) -> go.Figure | None:
         return None
 
     pts = pd.DataFrame(rows)
-    xs = np.linspace(pts["cache"].min() * 0.7, pts["cache"].max() * 1.3, 100)
-    theory = np.array([metrics.theory_nb(x) for x in xs])
+    # ラベルが重ならないよう、点ごとに上下交互にテキスト位置をずらす
+    pts["text_pos"] = [
+        "top center" if i % 2 == 0 else "bottom center" for i in range(len(pts))
+    ]
+    cache_range = np.linspace(pts["cache_kb"].min() * 0.7, pts["cache_kb"].max() * 1.3, 200)
+    nb_25 = np.array([metrics.theory_nb_from_cache_kb(c, 0.25) for c in cache_range])
+    nb_50 = np.array([metrics.theory_nb_from_cache_kb(c, 0.50) for c in cache_range])
+    nb_75 = np.array([metrics.theory_nb_from_cache_kb(c, 0.75) for c in cache_range])
 
     fig = go.Figure()
-    # 実用域帯（25〜75%）
+    # 理論帯（25〜75%使用）。Plotlyはx方向のfillなので、左端=nb_25(下→上)・右端=nb_75(上→下)の
+    # 輪郭で囲んで fill_betweenx 相当を作る。
     fig.add_trace(go.Scatter(
-        x=np.concatenate([xs, xs[::-1]]),
-        y=np.concatenate([theory * 0.75, (theory * 0.25)[::-1]]),
-        fill="toself", fillcolor="rgba(130,130,130,0.12)",
-        line=dict(width=0), name="実用域 (25〜75%)", hoverinfo="skip",
+        x=np.concatenate([nb_25, nb_75[::-1]]),
+        y=np.concatenate([cache_range, cache_range[::-1]]),
+        fill="toself", fillcolor="rgba(128,128,128,0.22)",
+        line=dict(width=0), name="理論帯 (25〜75% 使用)", hoverinfo="skip",
     ))
-    # 理論曲線
+    # 50%ライン
     fig.add_trace(go.Scatter(
-        x=xs, y=theory, mode="lines",
-        line=dict(dash="dash", color="gray"),
-        name="理論値 nb≈√(cache/32)", hoverinfo="skip",
-    ))
-    # 実測点（label別）
-    fig.add_trace(go.Scatter(
-        x=pts["cache"], y=pts["nb"], mode="markers+text",
-        text=pts["label"], textposition="top center",
-        marker=dict(size=13), name="実測",
-        customdata=pts["gflops"],
-        hovertemplate=(
-            "%{text}<br>cache/core=%{x:.2f} MB<br>"
-            "best nb=%{y}<br>%{customdata:.1f} GFlop/s<extra></extra>"
-        ),
+        x=nb_50, y=cache_range, mode="lines",
+        line=dict(color="red", width=2),
+        name="50% 使用ライン", hoverinfo="skip",
     ))
 
+    # 実測点（AOBA系は別色・別マーカー）
+    is_aoba = pts["label"].str.contains("AOBA")
+    for subset, color, symbol, legend_name in (
+        (pts[~is_aoba], _OTHER_COLOR, "circle", "その他 CPU(label)"),
+        (pts[is_aoba], _AOBA_COLOR, "diamond", "AOBA"),
+    ):
+        if subset.empty:
+            continue
+        fig.add_trace(go.Scatter(
+            x=subset["nb"], y=subset["cache_kb"], mode="markers+text",
+            text=[
+                f"{r.label} · {r.threads} · {r.size}" for r in subset.itertuples()
+            ],
+            textposition=subset["text_pos"].tolist(),
+            marker=dict(size=14, color=color, symbol=symbol, line=dict(color="white", width=1)),
+            name=legend_name,
+            customdata=subset["gflops"],
+            hovertemplate=(
+                "%{text}<br>nb=%{x}<br>cache/thread=%{y:.0f} KB<br>"
+                "%{customdata:.1f} GFlop/s<extra></extra>"
+            ),
+        ))
+
     fig.update_layout(
-        title=f"コアあたりキャッシュ量 × 最適タイルサイズ nb（threads={threads}, size={size}）",
-        xaxis_title="コアあたりキャッシュ量 (MB)",
-        yaxis_title="最適 nb（GFlops最大）",
-        height=600, margin=dict(l=60, r=20, t=50, b=50),
+        title="nb × スレッドあたりキャッシュ量（選択した組み合わせを比較）",
+        xaxis_title="Tile Size (nb)",
+        yaxis_title="Cache Size / Thread (KB)",
+        height=600,
+        legend=dict(orientation="h", yanchor="top", y=-0.18, xanchor="center", x=0.5),
+        margin=dict(l=60, r=40, t=60, b=130),
     )
     return fig
 
@@ -152,39 +182,72 @@ def compare_df(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+# 系列ごとの色を line と Max マーカーで揃えるための固定パレット（Plotly既定のD3配色）
+_PALETTE = [
+    "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
+    "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf",
+]
+
+
 def line_fig(
     df: pd.DataFrame,
-    threads: int,
-    size: int,
-    labels: list[str] | None = None,
+    combos: list[tuple[str, int, int]],
 ) -> go.Figure | None:
-    """nb × GFlops 折れ線（各nbで最適ib選択、label別系列。threads, size固定）。"""
-    label_opts = labels or sorted(
-        df[(df["threads"] == threads) & (df["size"] == size)]["label"].dropna().unique()
-    )
+    """nb × GFlops 折れ線（各nbで最適ib選択）。
 
+    combos: (label, threads, size) のリスト。各組を1系列として重ねる
+    （host横断で (nb, ib) ごとに平均してから最適ib選択。metrics.aggregate_runs）。
+    各系列のピークにマーカーを置き、Max XXX @ nb=YYY を注釈する（heatmapの赤点と同じ発想）。
+    """
     fig = go.Figure()
     plotted = False
-    for label in label_opts:
+    for i, (label, threads, size) in enumerate(combos):
         agg = metrics.aggregate_runs(df, label, threads, size)
         if agg.empty:
             continue
         bb = metrics.best_per_nb(agg)
+        color = _PALETTE[i % len(_PALETTE)]
+        name = f"{label} · {threads} · {size}"
+
         fig.add_trace(go.Scatter(
             x=bb["nb"], y=bb["GFlops"], mode="lines+markers",
-            name=label, marker=dict(size=5),
-            hovertemplate=f"{label}<br>nb=%{{x}}<br>%{{y:.1f}} GFlop/s<extra></extra>",
+            name=name, marker=dict(size=5, color=color), line=dict(color=color),
+            hovertemplate=f"{name}<br>nb=%{{x}}<br>%{{y:.1f}} GFlop/s<extra></extra>",
         ))
+
+        best = metrics.best_row(bb)
+        fig.add_trace(go.Scatter(
+            x=[int(best["nb"])], y=[float(best["GFlops"])],
+            mode="markers",
+            marker=dict(
+                size=13, color=color, symbol="star",
+                line=dict(color="white", width=1.5),
+            ),
+            name=f"{name} Max", showlegend=False,
+            hovertemplate=(
+                f"{name}<br>Max {best['GFlops']:.1f} GFlop/s @ "
+                f"nb={int(best['nb'])}<extra></extra>"
+            ),
+        ))
+        fig.add_annotation(
+            x=int(best["nb"]), y=float(best["GFlops"]),
+            text=f"Max {best['GFlops']:.1f} @ nb={int(best['nb'])}",
+            showarrow=True, arrowhead=2, ax=0, ay=-32,
+            font=dict(size=10, color=color),
+            bordercolor=color, borderwidth=1, bgcolor="white",
+        )
         plotted = True
 
     if not plotted:
         return None
 
     fig.update_layout(
-        title=f"nb × GFlops（threads={threads}, size={size}, 各nbで最適ib選択）",
+        title="nb × GFlops（host横断平均・各nbで最適ib選択・ピークにMax注釈）",
         xaxis_title="nb (tile size)",
         yaxis_title="GFlop/s",
-        height=600, margin=dict(l=60, r=20, t=50, b=50),
-        hovermode="x unified",
+        height=600,
+        legend=dict(orientation="h", yanchor="top", y=-0.18, xanchor="center", x=0.5),
+        margin=dict(l=60, r=40, t=60, b=130),
+        hovermode="closest",
     )
     return fig

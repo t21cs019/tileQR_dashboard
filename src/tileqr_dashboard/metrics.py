@@ -6,23 +6,32 @@ import math
 import pandas as pd
 
 
-def cache_per_core_mb(row: pd.Series) -> float | None:
-    """L2(per core) + L3(均等割り) をコアあたり MB で返す。欠損なら None。"""
+def cache_per_thread_kb(row: pd.Series, threads: int) -> float | None:
+    """使用ソケット数を考慮した、スレッドあたりキャッシュ量(KB)。欠損なら None。
+
+    1ソケット分のキャッシュ(L2全コア + L3) に「実際に使うソケット数」を掛けて
+    threads で割る。使用ソケット数は ceil(threads / cores_per_socket) を
+    実装ソケット数で上限を切ったもの（例: 64スレッドなら1ソケットで足りる）。
+    """
     l2 = row.get("l2_per_core_kb")
-    l3 = row.get("l3_total_mb")
-    sockets = row.get("sockets")
+    l3 = row.get("l3_per_socket_mb")
     cps = row.get("cores_per_socket")
-    if any(pd.isna(v) for v in (l2, l3, sockets, cps)):
+    sockets = row.get("sockets")
+    if any(pd.isna(v) for v in (l2, l3, cps, sockets)):
         return None
-    total_cores = sockets * cps
-    if total_cores <= 0:
+    if pd.isna(threads) or threads <= 0 or cps <= 0:
         return None
-    return l2 / 1024.0 + l3 / total_cores
+    one_socket_kb = l2 * cps + l3 * 1024.0
+    sockets_used = min(math.ceil(threads / cps), sockets)
+    return one_socket_kb * sockets_used / threads
 
 
-def theory_nb(cache_mb: float) -> float:
-    """理論式 nb ≈ sqrt(CacheSize / 32)。32 = 8byte(double) × 4。"""
-    return math.sqrt(cache_mb * 1024 * 1024 / 32.0)
+def theory_nb_from_cache_kb(cache_kb: float, ratio: float = 1.0) -> float:
+    """理論式 nb ≈ sqrt(cache_kb[KB] × 1024 × ratio / 32)。32 = 8byte(double) × 4。
+
+    ratio はキャッシュ使用率（例: 0.25・0.5・0.75 で 25/50/75% 帯を描ける）。
+    """
+    return math.sqrt(cache_kb * 1024 * ratio / 32.0)
 
 
 def best_row(g: pd.DataFrame) -> pd.Series:

@@ -111,8 +111,10 @@ Plotly でホバー（nb/ib/GFlops 表示）とズームに対応。4タブ構�
 
 - 概要：(label, threads, size) ごとのピーク性能比較表
 - ヒートマップ：CPU(label) / threads / size を選んで nb×ib ヒートマップ
-- nb-GFlops曲線：threads / size を選び、CPU(label)別に nb×GFlops を重ねて比較
-- 分析：threads / size を選び、キャッシュ量 × 最適nb 散布図（理論曲線つき、点はlabel単位）
+- nb-GFlops曲線：(CPU・threads・size) の組み合わせを複数選んで nb×GFlops を重ねて比較
+  （各系列のピークに Max XXX @ nb=YYY を注釈）
+- 分析：threads / size を選び、nb × スレッドあたりキャッシュ量 散布図
+  （25〜75%帯+50%ライン、点は(label,threads,size)単位、AOBAは別色・別マーカー）
 
 `run_sync.sh` で取り込んだ後、サイドバーの「データ再読み込み」で最新化される。
 
@@ -131,13 +133,16 @@ CSV と同名で隣に置く（`xxx.csv` ↔ `xxx.meta.json`）。CPU比較の�
   "cpu": {
     "model_name": "AMD EPYC 7702 64-Core Processor",
     "sockets": 2, "cores_per_socket": 64, "threads_per_core": 1,
-    "numa_nodes": 8, "l1d_per_core_kb": 32, "l2_per_core_kb": 512, "l3_total_mb": 256
+    "numa_nodes": 8, "l1d_per_core_kb": 32, "l2_per_core_kb": 512, "l3_per_socket_mb": 256
   }
 }
 ```
 
-`l2_per_core_kb` / `l3_total_mb` / `sockets` / `cores_per_socket` が揃うと、
-コアあたりキャッシュ量と理論式 `nb ≈ √(CacheSize / 32)` を散布図に重ねられる。
+> `l3_per_socket_mb` は1ソケットあたりのL3容量（旧キー名 `l3_total_mb` のままでも後方互換で読める）。
+
+`l2_per_core_kb` / `l3_per_socket_mb` / `sockets` / `cores_per_socket` が揃うと、
+スレッドあたりキャッシュ量と理論式 `nb ≈ √(CacheSize/thread × ratio / 32)` を
+散布図（横軸nb・縦軸キャッシュ/スレッド、25〜75%帯+50%ライン）に重ねられる。
 
 > メタJSONを自動採取する `collect_meta.py`（`lscpu --json` をパース）は計測側
 > `optuna_tileQR` に置く予定。現状は手書き or 未付与でも動く。

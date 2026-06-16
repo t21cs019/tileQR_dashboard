@@ -39,7 +39,19 @@ def make_line(
         if agg.empty:
             continue
         bb = metrics.best_per_nb(agg)
-        plt.plot(bb["nb"], bb["GFlops"], marker="o", markersize=3, label=label)
+        (line,) = plt.plot(bb["nb"], bb["GFlops"], marker="o", markersize=3, label=label)
+
+        best = metrics.best_row(bb)
+        color = line.get_color()
+        plt.scatter(
+            [best["nb"]], [best["GFlops"]],
+            marker="*", s=110, color=color, edgecolor="black", linewidth=0.5, zorder=5,
+        )
+        plt.annotate(
+            f"Max {best['GFlops']:.1f} @ nb={int(best['nb'])}",
+            (best["nb"], best["GFlops"]),
+            textcoords="offset points", xytext=(6, 8), fontsize=8, color=color,
+        )
         n_plotted += 1
 
     if n_plotted == 0:
