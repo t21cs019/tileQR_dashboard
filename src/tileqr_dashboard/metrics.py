@@ -6,23 +6,36 @@ import math
 import pandas as pd
 
 
-def cache_per_core_mb(row: pd.Series) -> float | None:
-    """L2(per core) + L3(均等割り) をコアあたり MB で返す。欠損なら None。"""
+def total_cache_kb(row: pd.Series) -> float | None:
+    """総キャッシュ容量(KB) = L2(全コア合計) + L3(全ソケット合計)。欠損なら None。
+
+    総キャッシュ = l2_per_core_kb × sockets × cores_per_socket
+                 + l3_per_socket_mb × sockets × 1024
+    """
     l2 = row.get("l2_per_core_kb")
-    l3 = row.get("l3_total_mb")
+    l3 = row.get("l3_per_socket_mb")
     sockets = row.get("sockets")
     cps = row.get("cores_per_socket")
     if any(pd.isna(v) for v in (l2, l3, sockets, cps)):
         return None
-    total_cores = sockets * cps
-    if total_cores <= 0:
+    return l2 * sockets * cps + l3 * sockets * 1024.0
+
+
+def cache_per_thread_kb(row: pd.Series) -> float | None:
+    """総キャッシュ(KB) ÷ threads。欠損なら None。"""
+    total = total_cache_kb(row)
+    threads = row.get("threads")
+    if total is None or pd.isna(threads) or threads <= 0:
         return None
-    return l2 / 1024.0 + l3 / total_cores
+    return total / threads
 
 
-def theory_nb(cache_mb: float) -> float:
-    """理論式 nb ≈ sqrt(CacheSize / 32)。32 = 8byte(double) × 4。"""
-    return math.sqrt(cache_mb * 1024 * 1024 / 32.0)
+def theory_nb_from_cache_kb(cache_kb: float, ratio: float = 1.0) -> float:
+    """理論式 nb ≈ sqrt(cache_kb[KB] × 1024 × ratio / 32)。32 = 8byte(double) × 4。
+
+    ratio はキャッシュ使用率（例: 0.25・0.5・0.75 で 25/50/75% 帯を描ける）。
+    """
+    return math.sqrt(cache_kb * 1024 * ratio / 32.0)
 
 
 def best_row(g: pd.DataFrame) -> pd.Series:
