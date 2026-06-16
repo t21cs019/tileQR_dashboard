@@ -152,39 +152,70 @@ def compare_df(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+# 系列ごとの色を line と Max マーカーで揃えるための固定パレット（Plotly既定のD3配色）
+_PALETTE = [
+    "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
+    "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf",
+]
+
+
 def line_fig(
     df: pd.DataFrame,
-    threads: int,
-    size: int,
-    labels: list[str] | None = None,
+    combos: list[tuple[str, int, int]],
 ) -> go.Figure | None:
-    """nb × GFlops 折れ線（各nbで最適ib選択、label別系列。threads, size固定）。"""
-    label_opts = labels or sorted(
-        df[(df["threads"] == threads) & (df["size"] == size)]["label"].dropna().unique()
-    )
+    """nb × GFlops 折れ線（各nbで最適ib選択）。
 
+    combos: (label, threads, size) のリスト。各組を1系列として重ねる
+    （host横断で (nb, ib) ごとに平均してから最適ib選択。metrics.aggregate_runs）。
+    各系列のピークにマーカーを置き、Max XXX @ nb=YYY を注釈する（heatmapの赤点と同じ発想）。
+    """
     fig = go.Figure()
     plotted = False
-    for label in label_opts:
+    for i, (label, threads, size) in enumerate(combos):
         agg = metrics.aggregate_runs(df, label, threads, size)
         if agg.empty:
             continue
         bb = metrics.best_per_nb(agg)
+        color = _PALETTE[i % len(_PALETTE)]
+        name = f"{label} · {threads} · {size}"
+
         fig.add_trace(go.Scatter(
             x=bb["nb"], y=bb["GFlops"], mode="lines+markers",
-            name=label, marker=dict(size=5),
-            hovertemplate=f"{label}<br>nb=%{{x}}<br>%{{y:.1f}} GFlop/s<extra></extra>",
+            name=name, marker=dict(size=5, color=color), line=dict(color=color),
+            hovertemplate=f"{name}<br>nb=%{{x}}<br>%{{y:.1f}} GFlop/s<extra></extra>",
         ))
+
+        best = metrics.best_row(bb)
+        fig.add_trace(go.Scatter(
+            x=[int(best["nb"])], y=[float(best["GFlops"])],
+            mode="markers",
+            marker=dict(
+                size=13, color=color, symbol="star",
+                line=dict(color="white", width=1.5),
+            ),
+            name=f"{name} Max", showlegend=False,
+            hovertemplate=(
+                f"{name}<br>Max {best['GFlops']:.1f} GFlop/s @ "
+                f"nb={int(best['nb'])}<extra></extra>"
+            ),
+        ))
+        fig.add_annotation(
+            x=int(best["nb"]), y=float(best["GFlops"]),
+            text=f"Max {best['GFlops']:.1f} @ nb={int(best['nb'])}",
+            showarrow=True, arrowhead=2, ax=0, ay=-32,
+            font=dict(size=10, color=color),
+            bordercolor=color, borderwidth=1, bgcolor="white",
+        )
         plotted = True
 
     if not plotted:
         return None
 
     fig.update_layout(
-        title=f"nb × GFlops（threads={threads}, size={size}, 各nbで最適ib選択）",
+        title="nb × GFlops（host横断平均・各nbで最適ib選択・ピークにMax注釈）",
         xaxis_title="nb (tile size)",
         yaxis_title="GFlop/s",
         height=600, margin=dict(l=60, r=20, t=50, b=50),
-        hovermode="x unified",
+        hovermode="closest",
     )
     return fig

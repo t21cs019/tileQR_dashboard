@@ -87,21 +87,24 @@ with tab_heatmap:
 
 with tab_line:
     st.subheader("nb × GFlops 曲線（CPU比較）")
-    c1, c2 = st.columns(2)
-    line_thread_opts = sorted(df["threads"].unique())
-    line_threads = c1.selectbox("スレッド数", line_thread_opts, key="line_threads")
-    line_size_opts = sorted(df[df["threads"] == line_threads]["size"].unique())
-    line_size = c2.selectbox("size", line_size_opts, key="line_size")
-
-    line_label_opts = sorted(
-        df[(df["threads"] == line_threads) & (df["size"] == line_size)]["label"]
-        .dropna()
-        .unique()
+    combos_df = (
+        df[["label", "threads", "size"]]
+        .drop_duplicates()
+        .sort_values(["label", "threads", "size"])
     )
-    line_labels = st.multiselect(
-        "CPU(label)（複数選択可）", line_label_opts, default=line_label_opts
+    combo_opts = [
+        f"{lbl} · {int(th)} · {int(sz)}"
+        for lbl, th, sz in combos_df.itertuples(index=False, name=None)
+    ]
+    line_selected = st.multiselect(
+        "比較する (CPU・threads・size) の組み合わせ（複数選択可）",
+        combo_opts, default=combo_opts, key="line_combos",
     )
-    fig = plots.line_fig(df, int(line_threads), int(line_size), line_labels or None)
+    line_combos = [
+        (lbl, int(th), int(sz))
+        for lbl, th, sz in (s.rsplit(" · ", 2) for s in line_selected)
+    ]
+    fig = plots.line_fig(df, line_combos)
     if fig is not None:
         st.plotly_chart(fig, use_container_width=True)
     else:

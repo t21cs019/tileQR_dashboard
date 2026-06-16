@@ -111,7 +111,8 @@ Plotly でホバー（nb/ib/GFlops 表示）とズームに対応。4タブ構�
 
 - 概要：(label, threads, size) ごとのピーク性能比較表
 - ヒートマップ：CPU(label) / threads / size を選んで nb×ib ヒートマップ
-- nb-GFlops曲線：threads / size を選び、CPU(label)別に nb×GFlops を重ねて比較
+- nb-GFlops曲線：(CPU・threads・size) の組み合わせを複数選んで nb×GFlops を重ねて比較
+  （各系列のピークに Max XXX @ nb=YYY を注釈）
 - 分析：threads / size を選び、キャッシュ量 × 最適nb 散布図（理論曲線つき、点はlabel単位）
 
 `run_sync.sh` で取り込んだ後、サイドバーの「データ再読み込み」で最新化される。
