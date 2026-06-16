@@ -6,28 +6,24 @@ import math
 import pandas as pd
 
 
-def total_cache_kb(row: pd.Series) -> float | None:
-    """総キャッシュ容量(KB) = L2(全コア合計) + L3(全ソケット合計)。欠損なら None。
+def cache_per_thread_kb(row: pd.Series, threads: int) -> float | None:
+    """使用ソケット数を考慮した、スレッドあたりキャッシュ量(KB)。欠損なら None。
 
-    総キャッシュ = l2_per_core_kb × sockets × cores_per_socket
-                 + l3_per_socket_mb × sockets × 1024
+    1ソケット分のキャッシュ(L2全コア + L3) に「実際に使うソケット数」を掛けて
+    threads で割る。使用ソケット数は ceil(threads / cores_per_socket) を
+    実装ソケット数で上限を切ったもの（例: 64スレッドなら1ソケットで足りる）。
     """
     l2 = row.get("l2_per_core_kb")
     l3 = row.get("l3_per_socket_mb")
-    sockets = row.get("sockets")
     cps = row.get("cores_per_socket")
-    if any(pd.isna(v) for v in (l2, l3, sockets, cps)):
+    sockets = row.get("sockets")
+    if any(pd.isna(v) for v in (l2, l3, cps, sockets)):
         return None
-    return l2 * sockets * cps + l3 * sockets * 1024.0
-
-
-def cache_per_thread_kb(row: pd.Series) -> float | None:
-    """総キャッシュ(KB) ÷ threads。欠損なら None。"""
-    total = total_cache_kb(row)
-    threads = row.get("threads")
-    if total is None or pd.isna(threads) or threads <= 0:
+    if pd.isna(threads) or threads <= 0 or cps <= 0:
         return None
-    return total / threads
+    one_socket_kb = l2 * cps + l3 * 1024.0
+    sockets_used = min(math.ceil(threads / cps), sockets)
+    return one_socket_kb * sockets_used / threads
 
 
 def theory_nb_from_cache_kb(cache_kb: float, ratio: float = 1.0) -> float:

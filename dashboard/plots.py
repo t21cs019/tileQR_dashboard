@@ -61,27 +61,31 @@ _AOBA_COLOR = "#e07b00"
 _OTHER_COLOR = "steelblue"
 
 
-def scatter_fig(df: pd.DataFrame, threads: int, size: int) -> go.Figure | None:
-    """nb × スレッドあたりキャッシュ量（threads, size固定。点は (label, threads, size) 単位）。
+def scatter_fig(df: pd.DataFrame, combos: list[tuple[str, int, int]]) -> go.Figure | None:
+    """nb × スレッドあたりキャッシュ量。
 
+    combos: (label, threads, size) のリスト。各組を1点としてプロットする
+    （line_fig と同じ選び方。host横断で集約してから最適nbを選ぶ）。
     理論帯 nb≈√(cache×ratio/32) の25〜75%帯と50%ラインを重ねる。
     label に "AOBA" を含むものは別色・別マーカー（cache_vs_tile_v3.py のスタイル）。
     """
-    sub = df[(df["threads"] == threads) & (df["size"] == size)]
-    if sub.empty:
-        return None
-
     rows = []
-    for label, g in sub.groupby("label"):
-        cache_kb = metrics.cache_per_thread_kb(g.iloc[0])
+    for label, threads, size in combos:
+        sub = df[(df["label"] == label) & (df["threads"] == threads) & (df["size"] == size)]
+        if sub.empty:
+            continue
+        cache_kb = metrics.cache_per_thread_kb(sub.iloc[0], threads)
         if cache_kb is None:
             continue
         agg = metrics.aggregate_runs(df, label, threads, size)
         if agg.empty:
             continue
-        best = metrics.best_row(agg)
+        bb = metrics.best_per_nb(agg)
+        best = metrics.best_row(bb)
         rows.append({
             "label": label,
+            "threads": threads,
+            "size": size,
             "cache_kb": cache_kb,
             "nb": int(best["nb"]),
             "gflops": float(best["GFlops"]),
@@ -91,6 +95,10 @@ def scatter_fig(df: pd.DataFrame, threads: int, size: int) -> go.Figure | None:
         return None
 
     pts = pd.DataFrame(rows)
+    # ラベルが重ならないよう、点ごとに上下交互にテキスト位置をずらす
+    pts["text_pos"] = [
+        "top center" if i % 2 == 0 else "bottom center" for i in range(len(pts))
+    ]
     cache_range = np.linspace(pts["cache_kb"].min() * 0.7, pts["cache_kb"].max() * 1.3, 200)
     nb_25 = np.array([metrics.theory_nb_from_cache_kb(c, 0.25) for c in cache_range])
     nb_50 = np.array([metrics.theory_nb_from_cache_kb(c, 0.50) for c in cache_range])
@@ -122,8 +130,10 @@ def scatter_fig(df: pd.DataFrame, threads: int, size: int) -> go.Figure | None:
             continue
         fig.add_trace(go.Scatter(
             x=subset["nb"], y=subset["cache_kb"], mode="markers+text",
-            text=[f"{lbl} · {threads} · {size}" for lbl in subset["label"]],
-            textposition="top center",
+            text=[
+                f"{r.label} · {r.threads} · {r.size}" for r in subset.itertuples()
+            ],
+            textposition=subset["text_pos"].tolist(),
             marker=dict(size=14, color=color, symbol=symbol, line=dict(color="white", width=1)),
             name=legend_name,
             customdata=subset["gflops"],
@@ -134,10 +144,12 @@ def scatter_fig(df: pd.DataFrame, threads: int, size: int) -> go.Figure | None:
         ))
 
     fig.update_layout(
-        title=f"nb × スレッドあたりキャッシュ量（threads={threads}, size={size}）",
+        title="nb × スレッドあたりキャッシュ量（選択した組み合わせを比較）",
         xaxis_title="Tile Size (nb)",
         yaxis_title="Cache Size / Thread (KB)",
-        height=600, margin=dict(l=60, r=20, t=50, b=50),
+        height=600,
+        legend=dict(orientation="h", yanchor="top", y=-0.18, xanchor="center", x=0.5),
+        margin=dict(l=60, r=40, t=60, b=130),
     )
     return fig
 
@@ -233,7 +245,9 @@ def line_fig(
         title="nb × GFlops（host横断平均・各nbで最適ib選択・ピークにMax注釈）",
         xaxis_title="nb (tile size)",
         yaxis_title="GFlop/s",
-        height=600, margin=dict(l=60, r=20, t=50, b=50),
+        height=600,
+        legend=dict(orientation="h", yanchor="top", y=-0.18, xanchor="center", x=0.5),
+        margin=dict(l=60, r=40, t=60, b=130),
         hovermode="closest",
     )
     return fig

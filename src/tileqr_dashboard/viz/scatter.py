@@ -42,7 +42,7 @@ def make_scatter(
 
     rows = []
     for label, g in sub.groupby("label"):
-        cache_kb = metrics.cache_per_thread_kb(g.iloc[0])
+        cache_kb = metrics.cache_per_thread_kb(g.iloc[0], threads)
         if cache_kb is None:
             continue
         agg = metrics.aggregate_runs(df, label, threads, size)

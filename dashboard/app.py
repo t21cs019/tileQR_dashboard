@@ -32,8 +32,35 @@ def _parquet_mtime() -> float:
 
 
 def _png_export_config(filename: str) -> dict:
-    """図右上のカメラアイコンから落とせるPNGのファイル名・解像度を指定する。"""
-    return {"toImageButtonOptions": {"format": "png", "filename": filename, "scale": 2}}
+    """図右上のカメラアイコンから落とせるPNGのファイル名・解像度・サイズを指定する。
+
+    凡例を図の下に横並びにしている（line/scatter）ぶん、縦を広めに取る。
+    """
+    return {"toImageButtonOptions": {
+        "format": "png", "filename": filename,
+        "scale": 2, "width": 1400, "height": 850,
+    }}
+
+
+def _combo_options(df) -> list[str]:
+    """データにある全 (label, threads, size) を "label · threads · size" 文字列で返す。"""
+    combos_df = (
+        df[["label", "threads", "size"]]
+        .drop_duplicates()
+        .sort_values(["label", "threads", "size"])
+    )
+    return [
+        f"{lbl} · {int(th)} · {int(sz)}"
+        for lbl, th, sz in combos_df.itertuples(index=False, name=None)
+    ]
+
+
+def _parse_combos(selected: list[str]) -> list[tuple[str, int, int]]:
+    """"label · threads · size" 文字列を (label, threads, size) のタプルに戻す。"""
+    return [
+        (lbl, int(th), int(sz))
+        for lbl, th, sz in (s.rsplit(" · ", 2) for s in selected)
+    ]
 
 
 st.title("tileQR ベンチマーク ダッシュボード")
@@ -93,26 +120,15 @@ with tab_heatmap:
     else:
         st.info("該当データがありません。")
 
+combo_opts = _combo_options(df)
+
 with tab_line:
     st.subheader("nb × GFlops 曲線（CPU比較）")
-    combos_df = (
-        df[["label", "threads", "size"]]
-        .drop_duplicates()
-        .sort_values(["label", "threads", "size"])
-    )
-    combo_opts = [
-        f"{lbl} · {int(th)} · {int(sz)}"
-        for lbl, th, sz in combos_df.itertuples(index=False, name=None)
-    ]
     line_selected = st.multiselect(
         "比較する (CPU・threads・size) の組み合わせ（複数選択可）",
         combo_opts, default=combo_opts, key="line_combos",
     )
-    line_combos = [
-        (lbl, int(th), int(sz))
-        for lbl, th, sz in (s.rsplit(" · ", 2) for s in line_selected)
-    ]
-    fig = plots.line_fig(df, line_combos)
+    fig = plots.line_fig(df, _parse_combos(line_selected))
     if fig is not None:
         st.plotly_chart(
             fig, use_container_width=True,
@@ -123,13 +139,11 @@ with tab_line:
 
 with tab_analysis:
     st.subheader("キャッシュ量 × 最適タイルサイズ")
-    c1, c2 = st.columns(2)
-    sc_thread_opts = sorted(df["threads"].unique())
-    sc_threads = c1.selectbox("スレッド数", sc_thread_opts, key="sc_threads")
-    sc_size_opts = sorted(df[df["threads"] == sc_threads]["size"].unique())
-    sc_size = c2.selectbox("size", sc_size_opts, key="sc_size")
-
-    fig = plots.scatter_fig(df, int(sc_threads), int(sc_size))
+    sc_selected = st.multiselect(
+        "比較する (CPU・threads・size) の組み合わせ（複数選択可）",
+        combo_opts, default=combo_opts, key="sc_combos",
+    )
+    fig = plots.scatter_fig(df, _parse_combos(sc_selected))
     if fig is not None:
         st.plotly_chart(
             fig, use_container_width=True,
@@ -138,5 +152,5 @@ with tab_analysis:
     else:
         st.info(
             "CPUキャッシュ情報（メタJSON または cpus.toml プリセット）を持つ"
-            "label がこの threads/size にありません。"
+            "組み合わせを選んでください。"
         )
