@@ -33,11 +33,13 @@ tileQR_dashboard/
 │   ├── sync_pull.py             # 取得 → store再構築
 │   ├── ingest.py                # CSV+meta 読み込み・統合
 │   ├── metrics.py               # 計算ヘルパ（キャッシュ量・理論式）
-│   └── viz/{heatmap,scatter,compare}.py
+│   └── viz/{heatmap,line,scatter,compare}.py
 ├── dashboard/
 │   ├── app.py                   # Streamlit UI（Webダッシュボード）
 │   └── plots.py                 # Plotly図ビルダ
+├── deploy/tileqr-dashboard.service.example   # 常時稼働(systemd)サンプル
 ├── run_sync.sh / run_viz.sh / run_dashboard.sh
+├── VERSIONING.md / ROADMAP.md
 └── pyproject.toml
 ```
 
@@ -87,6 +89,7 @@ AOBA-B は Nextcloud から CSV を DL して `inbox/manual/aoba_b/` に置く�
 bash run_viz.sh all                              # 全部
 bash run_viz.sh heatmap --host par001 --threads 128
 bash run_viz.sh heatmap --all
+bash run_viz.sh line                             # nb×GFlops 折れ線（CPU比較）
 bash run_viz.sh scatter                          # メタ(キャッシュ情報)が必要
 bash run_viz.sh compare                          # 16:9, 日本語(NotoSansCJK)
 ```
@@ -98,18 +101,17 @@ bash run_dashboard.sh                             # http://localhost:8501
 bash run_dashboard.sh --server.address 0.0.0.0    # 大学LAN/Tailscaleに公開
 ```
 
-Plotly でホバー（nb/ib/GFlops 表示）とズームに対応。3タブ構成。
+Plotly でホバー（nb/ib/GFlops 表示）とズームに対応。4タブ構成。
 
 - 概要：CPU別ピーク性能の比較表
 - ホスト詳細：host / threads を選んで nb×ib ヒートマップ
+- nb-GFlops曲線：threads を選び、CPU(host)別に nb×GFlops を重ねて比較
 - 分析：キャッシュ量 × 最適nb 散布図（理論曲線つき）
 
 `run_sync.sh` で取り込んだ後、サイドバーの「データ再読み込み」で最新化される。
 
-常時稼働させる場合は、WSL2 の systemd でサービス化するか、Windows の
-タスクスケジューラで起動時に立ち上げる。あわせて `run_sync.sh` を
-cron / タスクスケジューラで定期実行しておけば、データも自動で新しくなる。
 公開はまず localhost のみにして、必要に応じて LAN / Tailscale に広げると安全。
+研究室機で立てっぱなしにする手順は下の「常時稼働」節を参照。
 
 ## メタJSON（任意・後付け可）
 
@@ -138,3 +140,45 @@ CSV と同名で隣に置く（`xxx.csv` ↔ `xxx.meta.json`）。CPU比較の�
 
 `config/sources.toml` にブロックを1つ足すだけ。とりあえず `manual` にしておけば、
 どんなサーバでも「DL → inbox に置く」で取り込める。
+
+## 常時稼働（WSL2 systemd）
+
+研究室機を立てっぱなしにして、常にダッシュボードを見られるようにする手順。
+
+### 前提: WSL2 で systemd を有効化
+
+`/etc/wsl.conf` に以下を書いて、`wsl --shutdown` 後に再起動する。
+
+```ini
+[boot]
+systemd=true
+```
+
+### サービス登録
+
+```bash
+mkdir -p ~/.config/systemd/user
+cp deploy/tileqr-dashboard.service.example ~/.config/systemd/user/tileqr-dashboard.service
+# エディタで <USER> とパスを自分の環境に修正
+systemctl --user daemon-reload
+systemctl --user enable --now tileqr-dashboard
+loginctl enable-linger "$USER"        # ログアウト後も動かす
+```
+
+`http://localhost:8501` で常時アクセスできる。状態は
+`systemctl --user status tileqr-dashboard`、ログは
+`journalctl --user -u tileqr-dashboard -f`。
+
+### データの自動更新
+
+`run_sync.sh` を cron で定期実行すると、データも自動で新しくなる。
+
+```bash
+# 例: 10分ごとに取り込み（crontab -e で登録）
+*/10 * * * * cd ~/Workspace/tileQR_dashboard && .venv/bin/python -m tileqr_dashboard.sync_pull >> /tmp/tileqr_sync.log 2>&1
+```
+
+## バージョン管理
+
+セマンティックバージョニングに従う。方針は [VERSIONING.md](VERSIONING.md)、
+今後の予定・TODO は [ROADMAP.md](ROADMAP.md) を参照。

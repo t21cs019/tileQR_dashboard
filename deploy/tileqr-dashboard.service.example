@@ -1,0 +1,28 @@
+# WSL2 の systemd ユーザーサービス例（Streamlit ダッシュボードの常時稼働）
+#
+# 使い方:
+#   1. <USER> と作業パスを自分の環境に合わせて書き換える
+#   2. このファイルを ~/.config/systemd/user/tileqr-dashboard.service に置く
+#   3. 下記コマンドで有効化（手順は README「常時稼働」節も参照）
+#
+#     systemctl --user daemon-reload
+#     systemctl --user enable --now tileqr-dashboard
+#     loginctl enable-linger <USER>     # ログアウト後も動かすため
+#
+#   状態確認:  systemctl --user status tileqr-dashboard
+#   ログ:      journalctl --user -u tileqr-dashboard -f
+
+[Unit]
+Description=tileQR Dashboard (Streamlit)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/<USER>/Workspace/tileQR_dashboard
+Environment=PYTHONPATH=/home/<USER>/Workspace/tileQR_dashboard/src
+ExecStart=/home/<USER>/Workspace/tileQR_dashboard/.venv/bin/streamlit run dashboard/app.py --server.headless true --server.port 8501
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

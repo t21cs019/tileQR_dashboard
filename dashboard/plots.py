@@ -129,3 +129,35 @@ def compare_df(df: pd.DataFrame) -> pd.DataFrame:
     if not out.empty:
         out = out.sort_values(["ホスト", "スレッド"]).reset_index(drop=True)
     return out
+
+
+def line_fig(
+    df: pd.DataFrame,
+    threads: int,
+    hosts: list[str] | None = None,
+) -> go.Figure | None:
+    """nb × GFlops 折れ線（各nbで最適ib選択、host別系列）。ホバーで値表示。"""
+    sub = df[df["threads"] == threads]
+    if hosts:
+        sub = sub[sub["host"].isin(hosts)]
+    if sub.empty:
+        return None
+
+    fig = go.Figure()
+    for host, g in sub.groupby("host"):
+        bb = metrics.best_per_nb(g)
+        name = f"{g['label'].iloc[0]} [{host}]"
+        fig.add_trace(go.Scatter(
+            x=bb["nb"], y=bb["GFlops"], mode="lines+markers",
+            name=name, marker=dict(size=5),
+            hovertemplate=f"{host}<br>nb=%{{x}}<br>%{{y:.1f}} GFlop/s<extra></extra>",
+        ))
+
+    fig.update_layout(
+        title=f"nb × GFlops（threads={threads}, 各nbで最適ib選択）",
+        xaxis_title="nb (tile size)",
+        yaxis_title="GFlop/s",
+        height=600, margin=dict(l=60, r=20, t=50, b=50),
+        hovermode="x unified",
+    )
+    return fig

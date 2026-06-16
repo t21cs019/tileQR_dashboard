@@ -53,7 +53,9 @@ n_hosts = df["host"].nunique()
 n_rows = len(df)
 st.caption(f"{n_hosts} ホスト / {n_rows:,} 計測点")
 
-tab_overview, tab_host, tab_analysis = st.tabs(["概要", "ホスト詳細", "分析"])
+tab_overview, tab_host, tab_line, tab_analysis = st.tabs(
+    ["概要", "ホスト詳細", "nb-GFlops曲線", "分析"]
+)
 
 with tab_overview:
     st.subheader("CPU別 ピーク性能")
@@ -63,11 +65,26 @@ with tab_host:
     st.subheader("nb × ib ヒートマップ")
     c1, c2 = st.columns(2)
     hosts = sorted(df["host"].unique())
-    host = c1.selectbox("ホスト", hosts)
+    host = c1.selectbox("ホスト", hosts, key="hm_host")
     thread_opts = sorted(df[df["host"] == host]["threads"].unique())
-    threads = c2.selectbox("スレッド数", thread_opts)
+    threads = c2.selectbox("スレッド数", thread_opts, key="hm_threads")
 
     fig = plots.heatmap_fig(df, host, int(threads))
+    if fig is not None:
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info("該当データがありません。")
+
+with tab_line:
+    st.subheader("nb × GFlops 曲線（CPU比較）")
+    c1, c2 = st.columns([1, 2])
+    line_thread_opts = sorted(df["threads"].unique())
+    line_threads = c1.selectbox("スレッド数", line_thread_opts, key="line_threads")
+    line_host_opts = sorted(df[df["threads"] == line_threads]["host"].unique())
+    line_hosts = c2.multiselect(
+        "ホスト（複数選択可）", line_host_opts, default=line_host_opts
+    )
+    fig = plots.line_fig(df, int(line_threads), line_hosts or None)
     if fig is not None:
         st.plotly_chart(fig, use_container_width=True)
     else:

@@ -33,3 +33,9 @@ def best_row(g: pd.DataFrame) -> pd.Series:
 def heatmap_pivot(sub: pd.DataFrame) -> pd.DataFrame:
     """nb(列) × ib(行) の GFlops ピボットを返す。"""
     return sub.pivot_table(index="ib", columns="nb", values="GFlops", aggfunc="mean")
+
+
+def best_per_nb(g: pd.DataFrame) -> pd.DataFrame:
+    """各 nb について GFlops 最大の行を選び、nb 昇順で返す（最適ib選択）。"""
+    idx = g.groupby("nb")["GFlops"].idxmax()
+    return g.loc[idx].sort_values("nb")
