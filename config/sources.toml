@@ -33,3 +33,58 @@ label  = "calc (研究室サーバ)"
 # type  = "manual"
 # inbox = "inbox/manual/newsrv"
 # label = "新サーバ"
+
+# --- 自宅Intelデスクトップ群（手動運用） ---
+[sources.i3_6100]
+type  = "manual"
+inbox = "inbox/manual/i3_6100"
+label = "i3-6100 (自宅)"
+cpu   = "i3_6100"
+
+[sources.i3_7100]
+type  = "manual"
+inbox = "inbox/manual/i3_7100"
+label = "i3-7100 (自宅)"
+cpu   = "i3_7100"
+
+[sources.i3_8100]
+type  = "manual"
+inbox = "inbox/manual/i3_8100"
+label = "i3-8100 (自宅)"
+cpu   = "i3_8100"
+
+[sources.i3_9100]
+type  = "manual"
+inbox = "inbox/manual/i3_9100"
+label = "i3-9100 (自宅)"
+cpu   = "i3_9100"
+
+[sources.i5_7400]
+type  = "manual"
+inbox = "inbox/manual/i5_7400"
+label = "i5-7400 (自宅)"
+cpu   = "i5_7400"
+
+[sources.i5_7500]
+type  = "manual"
+inbox = "inbox/manual/i5_7500"
+label = "i5-7500 (自宅)"
+cpu   = "i5_7500"
+
+[sources.i5_8400]
+type  = "manual"
+inbox = "inbox/manual/i5_8400"
+label = "i5-8400 (自宅)"
+cpu   = "i5_8400"
+
+[sources.i7_7700]
+type  = "manual"
+inbox = "inbox/manual/i7_7700"
+label = "i7-7700 (自宅)"
+cpu   = "i7_7700"
+
+[sources.xeon_e3_1220v3]
+type  = "manual"
+inbox = "inbox/manual/xeon_e3_1220v3"
+label = "Xeon E3-1220 v3 (自宅)"
+cpu   = "xeon_e3_1220v3"

@@ -17,3 +17,98 @@ numa_nodes      = 8
 l1d_per_core_kb = 32
 l2_per_core_kb  = 512
 l3_per_socket_mb = 256  # 1ソケットあたりのL3（EPYCは「総L3」ではなくこちら）
+
+# ============================================================
+# 自宅Intelデスクトップ群（1ソケット）
+# L1d/L2はper-core、L3はソケット共有（=総L3）
+# ============================================================
+
+[i3_6100]
+model_name      = "Intel Core i3-6100"
+sockets         = 1
+cores_per_socket = 2
+threads_per_core = 2
+numa_nodes      = 1
+l1d_per_core_kb = 32
+l2_per_core_kb  = 256
+l3_per_socket_mb = 3
+
+[i3_7100]
+model_name      = "Intel Core i3-7100"
+sockets         = 1
+cores_per_socket = 2
+threads_per_core = 2
+numa_nodes      = 1
+l1d_per_core_kb = 32
+l2_per_core_kb  = 256
+l3_per_socket_mb = 3
+
+[i3_8100]
+model_name      = "Intel Core i3-8100"
+sockets         = 1
+cores_per_socket = 4
+threads_per_core = 1
+numa_nodes      = 1
+l1d_per_core_kb = 32
+l2_per_core_kb  = 256
+l3_per_socket_mb = 6
+
+[i3_9100]
+model_name      = "Intel Core i3-9100"
+sockets         = 1
+cores_per_socket = 4
+threads_per_core = 1
+numa_nodes      = 1
+l1d_per_core_kb = 32
+l2_per_core_kb  = 256
+l3_per_socket_mb = 6
+
+[i5_7400]
+model_name      = "Intel Core i5-7400"
+sockets         = 1
+cores_per_socket = 4
+threads_per_core = 1
+numa_nodes      = 1
+l1d_per_core_kb = 32
+l2_per_core_kb  = 256
+l3_per_socket_mb = 6
+
+[i5_7500]
+model_name      = "Intel Core i5-7500"
+sockets         = 1
+cores_per_socket = 4
+threads_per_core = 1
+numa_nodes      = 1
+l1d_per_core_kb = 32
+l2_per_core_kb  = 256
+l3_per_socket_mb = 6
+
+[i5_8400]
+model_name      = "Intel Core i5-8400"
+sockets         = 1
+cores_per_socket = 6
+threads_per_core = 1
+numa_nodes      = 1
+l1d_per_core_kb = 32
+l2_per_core_kb  = 256
+l3_per_socket_mb = 9
+
+[i7_7700]
+model_name      = "Intel Core i7-7700"
+sockets         = 1
+cores_per_socket = 4
+threads_per_core = 2
+numa_nodes      = 1
+l1d_per_core_kb = 32
+l2_per_core_kb  = 256
+l3_per_socket_mb = 8
+
+[xeon_e3_1220v3]
+model_name      = "Intel Xeon E3-1220 v3"
+sockets         = 1
+cores_per_socket = 4
+threads_per_core = 1
+numa_nodes      = 1
+l1d_per_core_kb = 32
+l2_per_core_kb  = 256
+l3_per_socket_mb = 8
