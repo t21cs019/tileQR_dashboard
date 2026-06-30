@@ -4,7 +4,7 @@ threads・size を固定し、その組み合わせの CPU(label) ごとに1点�
 メタJSON または cpus.toml プリセットでキャッシュ情報が分かる label だけが対象。
 
 横軸 = nb（最適タイルサイズ）、縦軸 = スレッドあたりキャッシュ量(KB)。
-理論帯 nb ≈ sqrt(cache×ratio / 32) の 25〜75% 帯と 50% ラインを重ねる。
+理論帯 nb ≈ sqrt(cache×ratio / 32) の 50〜150% 帯と 100% ラインを重ねる。
 （32 = 8 byte(double) × 4）
 label に "AOBA" を含むものは別色（オレンジ）・別マーカー（◇）で強調する。
 """
@@ -69,14 +69,14 @@ def make_scatter(
     fig, ax = plt.subplots(figsize=(12, 9))
 
     cache_range = np.linspace(pts["cache_kb"].min() * 0.7, pts["cache_kb"].max() * 1.3, 200)
-    nb_25 = np.array([metrics.theory_nb_from_cache_kb(c, 0.25) for c in cache_range])
     nb_50 = np.array([metrics.theory_nb_from_cache_kb(c, 0.50) for c in cache_range])
-    nb_75 = np.array([metrics.theory_nb_from_cache_kb(c, 0.75) for c in cache_range])
+    nb_100 = np.array([metrics.theory_nb_from_cache_kb(c, 1.00) for c in cache_range])
+    nb_150 = np.array([metrics.theory_nb_from_cache_kb(c, 1.50) for c in cache_range])
 
-    # グレー塗りつぶし（25%〜75%）
-    ax.fill_betweenx(cache_range, nb_25, nb_75, alpha=0.22, color="gray")
-    # 50%ライン（赤）
-    ax.plot(nb_50, cache_range, color="red", linewidth=2.0, zorder=4)
+    # グレー塗りつぶし（50%〜150%）
+    ax.fill_betweenx(cache_range, nb_50, nb_150, alpha=0.22, color="gray")
+    # 100%ライン（赤）
+    ax.plot(nb_100, cache_range, color="red", linewidth=2.0, zorder=4)
 
     for _, r in pts.iterrows():
         is_aoba = "AOBA" in r["label"]
@@ -98,8 +98,8 @@ def make_scatter(
     ax.grid(True, linestyle="-", alpha=0.4, color="gray")
     ax.set_axisbelow(True)
 
-    grey_patch = mpatches.Patch(color="gray", alpha=0.3, label="理論帯 (25〜75% 使用)")
-    red_line = plt.Line2D([0], [0], color="red", linewidth=2, label="50% 使用ライン")
+    grey_patch = mpatches.Patch(color="gray", alpha=0.3, label="理論帯 (50〜150% 使用)")
+    red_line = plt.Line2D([0], [0], color="red", linewidth=2, label="100% 使用ライン")
     blue_dot = plt.Line2D(
         [0], [0], marker="o", color="w", markerfacecolor=_OTHER_COLOR,
         markersize=9, label="その他 CPU(label)",

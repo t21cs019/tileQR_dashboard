@@ -66,7 +66,7 @@ def scatter_fig(df: pd.DataFrame, combos: list[tuple[str, int, int]]) -> go.Figu
 
     combos: (label, threads, size) のリスト。各組を1点としてプロットする
     （line_fig と同じ選び方。host横断で集約してから最適nbを選ぶ）。
-    理論帯 nb≈√(cache×ratio/32) の25〜75%帯と50%ラインを重ねる。
+    理論帯 nb≈√(cache×ratio/32) の50〜150%帯と100%ラインを重ねる。
     label に "AOBA" を含むものは別色・別マーカー（cache_vs_tile_v3.py のスタイル）。
     """
     rows = []
@@ -100,24 +100,24 @@ def scatter_fig(df: pd.DataFrame, combos: list[tuple[str, int, int]]) -> go.Figu
         "top center" if i % 2 == 0 else "bottom center" for i in range(len(pts))
     ]
     cache_range = np.linspace(pts["cache_kb"].min() * 0.7, pts["cache_kb"].max() * 1.3, 200)
-    nb_25 = np.array([metrics.theory_nb_from_cache_kb(c, 0.25) for c in cache_range])
     nb_50 = np.array([metrics.theory_nb_from_cache_kb(c, 0.50) for c in cache_range])
-    nb_75 = np.array([metrics.theory_nb_from_cache_kb(c, 0.75) for c in cache_range])
+    nb_100 = np.array([metrics.theory_nb_from_cache_kb(c, 1.00) for c in cache_range])
+    nb_150 = np.array([metrics.theory_nb_from_cache_kb(c, 1.50) for c in cache_range])
 
     fig = go.Figure()
-    # 理論帯（25〜75%使用）。Plotlyはx方向のfillなので、左端=nb_25(下→上)・右端=nb_75(上→下)の
+    # 理論帯（50〜150%使用）。Plotlyはx方向のfillなので、左端=nb_50(下→上)・右端=nb_150(上→下)の
     # 輪郭で囲んで fill_betweenx 相当を作る。
     fig.add_trace(go.Scatter(
-        x=np.concatenate([nb_25, nb_75[::-1]]),
+        x=np.concatenate([nb_50, nb_150[::-1]]),
         y=np.concatenate([cache_range, cache_range[::-1]]),
         fill="toself", fillcolor="rgba(128,128,128,0.22)",
-        line=dict(width=0), name="理論帯 (25〜75% 使用)", hoverinfo="skip",
+        line=dict(width=0), name="理論帯 (50〜150% 使用)", hoverinfo="skip",
     ))
-    # 50%ライン
+    # 100%ライン
     fig.add_trace(go.Scatter(
-        x=nb_50, y=cache_range, mode="lines",
+        x=nb_100, y=cache_range, mode="lines",
         line=dict(color="red", width=2),
-        name="50% 使用ライン", hoverinfo="skip",
+        name="100% 使用ライン", hoverinfo="skip",
     ))
 
     # 実測点（AOBA系は別色・別マーカー）

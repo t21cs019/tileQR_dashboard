@@ -10,19 +10,22 @@ def cache_per_thread_kb(row: pd.Series, threads: int) -> float | None:
     """使用ソケット数を考慮した、スレッドあたりキャッシュ量(KB)。欠損なら None。
 
     1ソケット分のキャッシュ(L2全コア + L3) に「実際に使うソケット数」を掛けて
-    threads で割る。使用ソケット数は ceil(threads / cores_per_socket) を
-    実装ソケット数で上限を切ったもの（例: 64スレッドなら1ソケットで足りる）。
+    threads で割る。使用ソケット数は ceil(threads / logical_cores_per_socket) を
+    実装ソケット数で上限を切ったもの。HT有効(threads_per_core=2)の場合は
+    1ソケットあたりの論理コア数 = cores_per_socket × threads_per_core を使う。
     """
     l2 = row.get("l2_per_core_kb")
     l3 = row.get("l3_per_socket_mb")
     cps = row.get("cores_per_socket")
     sockets = row.get("sockets")
+    tpc = row.get("threads_per_core") or 1
     if any(pd.isna(v) for v in (l2, l3, cps, sockets)):
         return None
     if pd.isna(threads) or threads <= 0 or cps <= 0:
         return None
     one_socket_kb = l2 * cps + l3 * 1024.0
-    sockets_used = min(math.ceil(threads / cps), sockets)
+    logical_per_socket = cps * tpc
+    sockets_used = min(math.ceil(threads / logical_per_socket), sockets)
     return one_socket_kb * sockets_used / threads
 
 
