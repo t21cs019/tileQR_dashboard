@@ -1,0 +1,18 @@
+# データ・生成物はイメージに含めない
+inbox/
+store/
+output/
+*.parquet
+*.csv
+
+# Python/uv
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# git・エディタ
+.git/
+.gitignore
+.vscode/
+.idea/
