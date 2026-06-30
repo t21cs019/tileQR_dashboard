@@ -67,10 +67,13 @@ label = "AOBA-B"
 cpu   = "AMD EPYC 7702"        # メタ無しCSVの保険（任意）
 
 [sources.calc]
-type   = "onedrive"            # rcloneで自動pull
-remote = "onedrive:tileQR_results/calc"
-inbox  = "inbox/onedrive/calc"
-label  = "calc (研究室サーバ)"
+type  = "manual"               # 研究室サーバ（手動運用）
+inbox = "inbox/manual/calc"
+label = "calc (研究室サーバ)"
+cpu   = "xeon_silver_4214"     # cpus.toml のプリセットキーを指定可
+
+# type = "onedrive" にすると rclone 経由で自動pullも可能
+# remote = "onedrive:tileQR_results/<key>"
 ```
 
 ### 2. 取り込み
