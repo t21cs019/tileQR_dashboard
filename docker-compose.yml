@@ -1,0 +1,107 @@
+# =============================================================================
+# tileQR_dashboard — ZimaOS / Docker Compose
+#
+# 2サービスを同一イメージから起動する:
+#   dashboard : Streamlit ダッシュボード（閲覧・計測プラン編集）      :8501
+#   receiver  : 受信API（計測機からのCSVアップロード・プラン往復同期） :8502
+#
+# データは名前付きボリュームで永続化し、両サービスで共有する
+# （receiver が inbox に書く → store を再構築 → dashboard が読む）。
+#
+# 使い方:
+#   - GHCR のビルド済みイメージを使う（既定）:  docker compose up -d
+#   - リポジトリからローカルビルドする:          docker compose up -d --build
+#     （その場合は下の `build: .` のコメントを外し、`image:` の行を無視させる）
+#
+# 認証（任意）: 受信APIに共有トークンをかけるなら .env に DASHBOARD_TOKEN を設定。
+# =============================================================================
+
+x-common: &common
+  image: ghcr.io/t21cs019/tileqr_dashboard:latest
+  # ローカルビルドする場合は上を消して下を有効化:
+  # build: .
+  restart: unless-stopped
+  environment:
+    - DASHBOARD_TOKEN=${DASHBOARD_TOKEN:-}
+  volumes:
+    - tileqr_config:/app/config
+    - tileqr_inbox:/app/inbox
+    - tileqr_store:/app/store
+    - tileqr_output:/app/output
+    - tileqr_plan:/app/plan
+
+services:
+  dashboard:
+    <<: *common
+    container_name: tileqr-dashboard
+    command:
+      - uv
+      - run
+      - streamlit
+      - run
+      - dashboard/app.py
+      - --server.address=0.0.0.0
+      - --server.port=8501
+    ports:
+      - "8501:8501"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  receiver:
+    <<: *common
+    container_name: tileqr-receiver
+    command:
+      - uv
+      - run
+      - uvicorn
+      - tileqr_dashboard.receiver:app
+      - --host=0.0.0.0
+      - --port=8502
+    ports:
+      - "8502:8502"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8502/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+volumes:
+  tileqr_config:
+  tileqr_inbox:
+  tileqr_store:
+  tileqr_output:
+  tileqr_plan:
+
+# --- ZimaOS / CasaOS アプリストア用メタデータ ---------------------------------
+# ZimaOS の「独自アプリをインストール」からこの compose を取り込むと、
+# 下のメタデータ（タイトル・アイコン・ポート説明）が反映される。
+x-casaos:
+  architectures:
+    - amd64
+    - arm64
+  main: dashboard
+  author: t21cs019
+  developer: t21cs019
+  icon: https://cdn.jsdelivr.net/gh/selfhst/icons/png/streamlit.png
+  title:
+    en_us: tileQR Dashboard
+  category: Research
+  description:
+    en_us: >-
+      Aggregate and visualize PLASMA tileQR (dgeqrf) benchmark results from
+      multiple servers. Includes an HTTP receiver for automated CSV upload and
+      a measurement-plan (PROGRESS.md) editor synced with plasma-bench.
+    ja_jp: >-
+      複数サーバの PLASMA tileQR（dgeqrf）ベンチマーク結果を集約・可視化する
+      ダッシュボード。計測機からのCSV自動アップロード用の受信APIと、
+      plasma-bench の計測プラン（PROGRESS.md）を往復同期で編集できる機能を含む。
+  tagline:
+    en_us: PLASMA tileQR benchmark dashboard
+    ja_jp: PLASMA tileQR ベンチマーク ダッシュボード
+  port_map: "8501"
+  scheme: http

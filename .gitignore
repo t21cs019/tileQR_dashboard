@@ -11,6 +11,13 @@ store/*.parquet
 output/*.png
 output/*.pdf
 
+# 計測プラン（ソースごとにアップロード・編集。データ扱いで除外）
+plan/**
+!plan/.gitkeep
+
 # inbox/ のサブフォルダ自体は残す（.gitkeep）
 !inbox/onedrive/.gitkeep
 !inbox/manual/.gitkeep
+
+# 受信APIの共有トークン等（.env.example のみコミット）
+.env

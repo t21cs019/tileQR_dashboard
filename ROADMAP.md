@@ -27,10 +27,18 @@ tileQR_dashboard の今後の機能追加・改善のメモ。`[x]` は実装済
 
 ## インフラ・運用
 - [ ] GitHub Actions で lint + test（CI）
+- [x] GitHub Actions で Docker イメージを GHCR に公開（`.github/workflows/docker-publish.yml`）
+- [x] ZimaOS / Docker Compose 対応（dashboard + receiver, 名前付きボリューム, `x-casaos`）
 - [ ] LICENSE 追加（MIT など）
 - [x] WSL2 常時稼働（systemd）のサンプル → `deploy/`
 - [ ] `run_sync.sh` の定期実行（cron / タスクスケジューラ）
 - [ ] README にダッシュボードのスクリーンショット
+
+## データ受け取り・計測プラン連携
+- [x] 受信API（`receiver.py`）: 計測機からのCSV/メタHTTPアップロード → 自動 store 再構築
+- [x] ブラウザからのCSV手動アップロード（サイドバー）
+- [x] 計測プラン（plasma-bench の `PROGRESS.md`）の閲覧・編集タブ（往復同期）
+- [x] plasma-bench 側 `sync_results.sh http` / `sync_plan.sh`（push/pull）
 
 ## 研究テーマ寄り（将来）
 - [ ] perf によるキャッシュヒット率計測との連携
@@ -59,4 +67,5 @@ tileQR_dashboard の今後の機能追加・改善のメモ。`[x]` は実装済
 ## バージョン履歴（概要）
 v0.1.0 初版 → v0.2.0 折れ線 → v0.3.0 CPUプリセット →
 v0.4.0 複数size対応 → v0.5.0 折れ線の複数選択・散布図の軸変更・PNGエクスポート →
-v0.6.0 CPUプリセット拡充・calc運用変更
+v0.6.0 CPUプリセット拡充・calc運用変更 →
+v0.7.0 ZimaOS/Docker Compose対応・受信API（HTTP/手動アップロード）・計測プラン編集タブ（往復同期）

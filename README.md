@@ -28,17 +28,23 @@ tileQR_dashboard/
 │   └── manual/<key>/            # 手動投入（NextcloudからDLしたCSV）
 ├── store/runs.parquet           # 統合テーブル（.gitignore）
 ├── output/                      # 生成グラフ（.gitignore）
+├── plan/<key>/PROGRESS.md       # 計測プラン（受信・編集。.gitignore）
 ├── src/tileqr_dashboard/
 │   ├── adapters/{manual,onedrive}.py
 │   ├── sync_pull.py             # 取得 → store再構築
 │   ├── ingest.py                # CSV+meta 読み込み・統合
 │   ├── metrics.py               # 計算ヘルパ（キャッシュ量・理論式）
+│   ├── receiver.py              # 受信API（HTTPアップロード・プラン往復同期）
+│   ├── plan.py                  # PROGRESS.md の読み書き（plasma-bench と互換）
 │   └── viz/{heatmap,line,scatter,compare}.py
 ├── dashboard/
-│   ├── app.py                   # Streamlit UI（Webダッシュボード）
+│   ├── app.py                   # Streamlit UI（Webダッシュボード + 計測プラン編集）
 │   └── plots.py                 # Plotly図ビルダ
+├── docker-compose.yml           # ZimaOS/Docker（dashboard + receiver）
+├── docker/entrypoint.sh         # 初回起動時の config seed・データ用意
+├── .github/workflows/docker-publish.yml  # GHCR へイメージ公開
 ├── deploy/tileqr-dashboard.service.example   # 常時稼働(systemd)サンプル
-├── run_sync.sh / run_viz.sh / run_dashboard.sh
+├── run_sync.sh / run_viz.sh / run_dashboard.sh / run_receiver.sh
 ├── VERSIONING.md / ROADMAP.md
 └── pyproject.toml
 ```
@@ -123,6 +129,71 @@ Plotly でホバー（nb/ib/GFlops 表示）とズームに対応。4タブ構�
 
 公開はまず localhost のみにして、必要に応じて LAN / Tailscale に広げると安全。
 研究室機で立てっぱなしにする手順は下の「常時稼働」節を参照。
+
+## Docker / ZimaOS で動かす
+
+ZimaOS（や普通の Docker 環境）では **docker compose** で2サービスを同時に立ち上げる:
+
+| サービス | ポート | 役割 |
+|---|---|---|
+| `dashboard` | 8501 | Streamlit ダッシュボード（閲覧・計測プラン編集） |
+| `receiver`  | 8502 | 受信API（計測機からのCSVアップロード・プラン往復同期） |
+
+データ（`config` / `inbox` / `store` / `output` / `plan`）は名前付きボリュームで
+永続化し、両サービスで共有する（receiver が inbox に書く → store 再構築 → dashboard が読む）。
+
+```bash
+# GHCR のビルド済みイメージを使う（既定）
+docker compose up -d
+#   http://<host>:8501  ダッシュボード
+#   http://<host>:8502  受信API（/health で死活確認）
+
+# リポジトリからローカルビルドする場合は docker-compose.yml の `build: .` を有効化して
+docker compose up -d --build
+```
+
+イメージは `main`／タグ push で GitHub Actions が **GHCR**（`ghcr.io/t21cs019/tileqr_dashboard`）
+に自動公開する。**ZimaOS** では「独自アプリをインストール」からこの `docker-compose.yml`
+を取り込めば、`x-casaos:` メタデータ（タイトル・アイコン・ポート）付きで入る。
+
+- 設定（`sources.toml` / `cpus.toml`）は初回起動時に既定値が config ボリュームへ seed される。
+  ソースを足すときは config ボリューム内の `sources.toml` を編集して receiver を再起動。
+- 受信APIに認証をかけるなら `.env` に `DASHBOARD_TOKEN` を設定（`.env.example` 参照）。
+
+## データ受け取りの自動化（受信API）
+
+計測機（**plasma-bench**）から結果を**手動**または **HTTP** で入れられる:
+
+- **手動アップロード**: ダッシュボード左サイドバーの「CSV手動アップロード」から、
+  取り込み先ソースを選んで CSV / `*.meta.json` を投入 → その場で store 再構築。
+- **HTTP 自動受信**: 計測機の `scripts/sync_results.sh http` が受信APIへ POST する。
+  着地後に store が自動再構築され、ダッシュボードは parquet の更新を検知して最新化する。
+
+```bash
+# 計測機側（plasma-bench リポジトリ）
+HTTP_URL=http://zima:8502 HTTP_KEY=calc bash scripts/sync_results.sh http
+#   HTTP_KEY は sources.toml のソースキー。DASHBOARD_TOKEN を設定していれば
+#   HTTP_TOKEN=<token> も付ける。
+```
+
+受信APIの主なエンドポイント: `POST /upload/<key>`（CSV/メタ）、`GET|POST /plan/<key>`
+（計測プラン）、`GET /health`、`GET /sources`。
+
+## 計測プランの閲覧・編集（往復同期）
+
+計測機側の「計測の自動化機能」（plasma-bench の `plan`）が管理する `PROGRESS.md`
+（ssrfb / tileqr / tuning の3表）を、ダッシュボードの **「計測プラン」タブ**で
+閲覧・編集できる。
+
+1. 計測機で `bash scripts/sync_plan.sh push` → `PROGRESS.md` をダッシュボードへ送る
+2. ダッシュボードの「計測プラン」タブで、ソースを選んで表を編集
+   （行追加・`note`/`skip`・スイープ範囲など。`status`/`coverage` は計測機が自動更新する
+   読み取り専用列）→「保存」
+3. 計測機で `bash scripts/sync_plan.sh pull` → 編集版を取り戻す
+4. 計測機で `plan scan`（status/coverage 再計算）→ `plan run`（未計測分を実行）
+
+フォーマットは plasma-bench 側 `plan/manifest.py` と互換（桁揃えまで一致）なので、
+どちら側で編集しても壊れない。
 
 ## メタJSON（任意・後付け可）
 

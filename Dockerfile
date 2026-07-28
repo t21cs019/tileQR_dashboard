@@ -18,8 +18,15 @@ RUN uv sync --frozen --no-dev --no-install-project \
 COPY . .
 RUN uv sync --frozen --no-dev || uv sync --no-dev
 
-EXPOSE 8501
+# 名前付きボリュームで config を上書きしても既定を seed できるよう控えを残す
+RUN cp -a /app/config /app/config.default \
+    && chmod +x /app/docker/entrypoint.sh
+
+# 8501 = Streamlit ダッシュボード / 8502 = 受信API（同一イメージ・compose で使い分け）
+EXPOSE 8501 8502
 
 ENV PYTHONPATH=/app/src
+ENTRYPOINT ["/app/docker/entrypoint.sh"]
+# 既定は dashboard。受信APIは compose 側で command を上書きして起動する。
 CMD ["uv", "run", "streamlit", "run", "dashboard/app.py", \
      "--server.address=0.0.0.0", "--server.port=8501"]
