@@ -1,6 +1,6 @@
 [project]
 name = "tileqr-dashboard"
-version = "0.6.0"
+version = "0.7.0"
 description = "PLASMA tileQR ベンチマーク結果の集約・可視化ダッシュボード"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -11,6 +11,10 @@ dependencies = [
     "pyarrow>=14.0",
     "streamlit>=1.30",
     "plotly>=5.18",
+    # 受信API（計測機からのHTTPアップロード・計測プラン往復同期）
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+    "python-multipart>=0.0.9",
 ]
 
 [build-system]

@@ -10,9 +10,11 @@ from __future__ import annotations
 
 import os
 
+import pandas as pd
 import streamlit as st
 
-from tileqr_dashboard import paths
+from tileqr_dashboard import ingest, paths, plan
+from tileqr_dashboard.config import load_sources
 from tileqr_dashboard.ingest import load_store
 
 import plots  # 同ディレクトリ
@@ -63,6 +65,115 @@ def _parse_combos(selected: list[str]) -> list[tuple[str, int, int]]:
     ]
 
 
+_MANUAL_SUFFIXES = (".csv", ".meta.json")
+
+
+def _manual_upload_ui() -> None:
+    """サイドバー: ブラウザからCSV/メタを取り込む（手動アップロード）。"""
+    with st.sidebar.expander("CSV手動アップロード", expanded=False):
+        try:
+            sources = load_sources()
+        except Exception as e:  # noqa: BLE001
+            st.error(f"sources.toml を読めません: {e}")
+            return
+        key = st.selectbox("取り込み先ソース", sorted(sources), key="ul_key")
+        ups = st.file_uploader(
+            "CSV / .meta.json（複数可）",
+            accept_multiple_files=True, type=["csv", "json"], key="ul_files",
+        )
+        if st.button("取り込む", key="ul_go", use_container_width=True):
+            if not ups:
+                st.warning("ファイルを選んでください。")
+                return
+            src = sources[key]
+            src.inbox.mkdir(parents=True, exist_ok=True)
+            saved = 0
+            for uf in ups:
+                name = os.path.basename(uf.name)
+                if name.endswith(_MANUAL_SUFFIXES):
+                    (src.inbox / name).write_bytes(uf.getbuffer())
+                    saved += 1
+            if saved == 0:
+                st.warning(".csv / .meta.json のみ取り込めます。")
+                return
+            ingest.build_store()
+            st.cache_data.clear()
+            st.success(f"{saved} 件を「{key}」に取り込みました。")
+            st.rerun()
+
+
+def _plan_editor(title: str, records: list[dict], cols: list[str], key: str):
+    """1つの計測プラン表を編集エディタとして描画し、編集後DataFrameを返す。"""
+    st.markdown(f"**{title}**")
+    df_edit = pd.DataFrame(records, columns=cols)
+    return st.data_editor(
+        df_edit, key=key, num_rows="dynamic", use_container_width=True,
+        hide_index=True,
+        disabled=list(plan.READONLY_COLS),
+        column_config={
+            "status": st.column_config.TextColumn(
+                "status", help="計測機の `plan scan` が自動更新（編集不可）"
+            ),
+            "coverage": st.column_config.TextColumn(
+                "coverage", help="充足済み/全点（自動更新・編集不可）"
+            ),
+        },
+    )
+
+
+def _plan_tab() -> None:
+    st.subheader("計測プラン（PROGRESS.md）")
+    st.caption(
+        "計測機（plasma-bench）からアップロードされた計測プランを閲覧・編集します。"
+        "`status` / `coverage` は計測機の `plan scan` が results/ を走査して自動更新する"
+        "読み取り専用列です。行の追加・note・skip はここで編集でき、計測機が pull して"
+        "`plan run` に反映します。"
+    )
+    keys = plan.available_sources()
+    if not keys:
+        st.info(
+            "まだ計測プランがありません。計測機から PROGRESS.md をアップロードしてください"
+            "（plasma-bench: `bash scripts/sync_results.sh http`）。"
+        )
+        return
+
+    key = st.selectbox("ソース", keys, key="plan_src")
+    m = plan.load_for_source(key)
+    if m is None:
+        st.warning("PROGRESS.md を読み込めませんでした。")
+        return
+
+    ed_ssrfb = _plan_editor(
+        "ssrfb", plan.bench_records(m.ssrfb, plan.SSRFB_COLS),
+        plan.SSRFB_COLS, key="plan_ssrfb",
+    )
+    ed_tileqr = _plan_editor(
+        "tileqr", plan.bench_records(m.tileqr, plan.TILEQR_COLS),
+        plan.TILEQR_COLS, key="plan_tileqr",
+    )
+    ed_tuning = _plan_editor(
+        "tuning", plan.tune_records(m.tuning),
+        plan.TUNE_COLS, key="plan_tuning",
+    )
+
+    c1, c2 = st.columns([1, 3])
+    if c1.button("保存", key="plan_save", use_container_width=True):
+        new_m = plan.Manifest(
+            ssrfb=plan.bench_from_records(ed_ssrfb.to_dict("records"), "ssrfb"),
+            tileqr=plan.bench_from_records(ed_tileqr.to_dict("records"), "tileqr"),
+            tuning=plan.tune_from_records(ed_tuning.to_dict("records")),
+        )
+        plan.save_for_source(key, new_m)
+        st.success(
+            f"「{key}」の PROGRESS.md を保存しました。計測機で "
+            "`bash scripts/sync_plan.sh pull` すると反映されます。"
+        )
+    c2.caption(f"保管先: `{paths.plan_path(key)}`")
+
+    with st.expander("PROGRESS.md（プレビュー）", expanded=False):
+        st.code(plan.render(m), language="markdown")
+
+
 st.title("tileQR ベンチマーク ダッシュボード")
 
 with st.sidebar:
@@ -70,28 +181,40 @@ with st.sidebar:
     if st.button("データ再読み込み", use_container_width=True):
         st.cache_data.clear()
         st.rerun()
-    st.caption("`run_sync.sh` で取り込んだ後に押すと最新化されます。")
+    st.caption("`run_sync.sh` で取り込んだ後、または受信APIでの取り込み後に押すと最新化されます。")
+
+_manual_upload_ui()
 
 try:
     df = get_data(_parquet_mtime())
+    has_data = not df.empty
 except FileNotFoundError:
-    st.warning(
-        "統合データがありません。先に `bash run_sync.sh` を実行してください。"
+    df = pd.DataFrame()
+    has_data = False
+
+if has_data:
+    n_labels = df["label"].nunique()
+    n_hosts = df["host"].nunique()
+    n_rows = len(df)
+    st.caption(f"{n_labels} CPU(label) / {n_hosts} ホスト / {n_rows:,} 計測点")
+else:
+    st.info(
+        "統合データがありません。inbox にCSVを置いて `bash run_sync.sh` を実行するか、"
+        "サイドバーの「CSV手動アップロード」／受信APIで取り込んでください。"
+        "（計測プランタブはデータが無くても使えます）"
     )
-    st.stop()
 
-if df.empty:
-    st.warning("データが空です。inbox にCSVを置いて `run_sync.sh` を実行してください。")
-    st.stop()
-
-n_labels = df["label"].nunique()
-n_hosts = df["host"].nunique()
-n_rows = len(df)
-st.caption(f"{n_labels} CPU(label) / {n_hosts} ホスト / {n_rows:,} 計測点")
-
-tab_overview, tab_heatmap, tab_line, tab_analysis = st.tabs(
-    ["概要", "ヒートマップ", "nb-GFlops曲線", "分析"]
+tab_overview, tab_heatmap, tab_line, tab_analysis, tab_plan = st.tabs(
+    ["概要", "ヒートマップ", "nb-GFlops曲線", "分析", "計測プラン"]
 )
+
+with tab_plan:
+    _plan_tab()
+
+if not has_data:
+    with tab_overview:
+        st.info("データが無いため表示できません。")
+    st.stop()
 
 with tab_overview:
     st.subheader("CPU別 ピーク性能（label × threads × size）")

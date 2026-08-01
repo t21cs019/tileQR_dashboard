@@ -2,8 +2,10 @@
 inbox/
 store/
 output/
+plan/
 *.parquet
 *.csv
+.env
 
 # Python/uv
 .venv/
