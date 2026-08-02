@@ -185,8 +185,14 @@ with st.sidebar:
 
 _manual_upload_ui()
 
+n_ssrfb = 0
 try:
     df = get_data(_parquet_mtime())
+    # ssrfb はカーネル単体GFlops（別指標）なので tileqr のグラフから分離する。
+    # 旧 parquet（kind列なし）は全て tileqr 扱いにフォールバック。
+    if "kind" in df.columns:
+        n_ssrfb = int((df["kind"] == "ssrfb").sum())
+        df = df[df["kind"] == "tileqr"].copy()
     has_data = not df.empty
 except FileNotFoundError:
     df = pd.DataFrame()
@@ -196,7 +202,15 @@ if has_data:
     n_labels = df["label"].nunique()
     n_hosts = df["host"].nunique()
     n_rows = len(df)
-    st.caption(f"{n_labels} CPU(label) / {n_hosts} ホスト / {n_rows:,} 計測点")
+    cap = f"{n_labels} CPU(label) / {n_hosts} ホスト / {n_rows:,} 計測点（tileqr）"
+    if n_ssrfb:
+        cap += f" ／ ssrfb {n_ssrfb:,} 点は別指標のため除外"
+    st.caption(cap)
+elif n_ssrfb:
+    st.info(
+        f"tileqr のデータがありません（ssrfb は {n_ssrfb:,} 点ありますが、"
+        "カーネル単体GFlopsのためこれらのグラフには表示しません）。"
+    )
 else:
     st.info(
         "統合データがありません。inbox にCSVを置いて `bash run_sync.sh` を実行するか、"

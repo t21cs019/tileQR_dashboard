@@ -29,8 +29,21 @@ _META_COLS = [
     "source_key", "host", "label", "cpu_model",
     "sockets", "cores_per_socket", "threads_per_core", "numa_nodes",
     "l1d_per_core_kb", "l2_per_core_kb", "l3_per_socket_mb",
-    "src_file",
+    "kind", "src_file",
 ]
+
+
+def _detect_kind(csv_path: Path, columns) -> str:
+    """CSVが tileqr か ssrfb かを判定する。
+
+    ssrfb のCSVは列に Time_sec を持ち、ファイル名に `_ssrfb_` を含む
+    （plasma-bench の命名規約）。どちらかに該当すれば ssrfb とみなす。
+    ssrfb の GFlops はカーネル単体（4·nb^3）で tileqr のフルQRとは別物なので、
+    ここでタグ付けして tileqr のグラフから分離できるようにする。
+    """
+    if "_ssrfb_" in csv_path.name or "Time_sec" in set(columns):
+        return "ssrfb"
+    return "tileqr"
 
 
 def _meta_path(csv_path: Path) -> Path:
@@ -104,10 +117,12 @@ def _read_one(
         print(f"  [warn] {csv_path.name}: 列不足 {missing} — スキップ")
         return None
 
+    kind = _detect_kind(csv_path, df.columns)
     df = df[_CSV_COLS].copy()
     meta = resolve_meta(csv_path, source, cpus)
     for col, val in meta.items():
         df[col] = val
+    df["kind"] = kind
     return df
 
 
