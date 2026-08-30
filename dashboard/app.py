@@ -13,7 +13,7 @@ import os
 import pandas as pd
 import streamlit as st
 
-from tileqr_dashboard import ingest, paths, plan
+from tileqr_dashboard import datarepo, ingest, paths, plan
 from tileqr_dashboard.config import load_sources
 from tileqr_dashboard.ingest import load_store
 
@@ -178,25 +178,43 @@ st.title("tileQR ベンチマーク ダッシュボード")
 
 with st.sidebar:
     st.header("操作")
+    if st.button("tileQR_data から更新", use_container_width=True, type="primary"):
+        with st.spinner("tileQR_data を取得して統合中..."):
+            datarepo.sync()
+        st.cache_data.clear()
+        st.success("tileQR_data から更新しました。")
+        st.rerun()
     if st.button("データ再読み込み", use_container_width=True):
         st.cache_data.clear()
         st.rerun()
-    st.caption("`run_sync.sh` で取り込んだ後、または受信APIでの取り込み後に押すと最新化されます。")
+    st.caption(
+        "「tileQR_data から更新」で主データを取得し直します。"
+        "「データ再読み込み」は取得済みデータの表示を最新化します。"
+    )
 
 _manual_upload_ui()
 
 n_ssrfb = 0
 try:
     df = get_data(_parquet_mtime())
-    # ssrfb はカーネル単体GFlops（別指標）なので tileqr のグラフから分離する。
-    # 旧 parquet（kind列なし）は全て tileqr 扱いにフォールバック。
-    if "kind" in df.columns:
-        n_ssrfb = int((df["kind"] == "ssrfb").sum())
-        df = df[df["kind"] == "tileqr"].copy()
-    has_data = not df.empty
 except FileNotFoundError:
     df = pd.DataFrame()
-    has_data = False
+
+# データ源(origin)フィルタ。tileQR_data（主）と inbox（補助）が混在するとき選べる。
+if not df.empty and "origin" in df.columns:
+    origin_vals = sorted(df["origin"].dropna().unique())
+    if len(origin_vals) > 1:
+        choice = st.sidebar.radio("データ源", ["すべて", *origin_vals], key="origin_filter")
+        if choice != "すべて":
+            df = df[df["origin"] == choice].copy()
+
+# ssrfb はカーネル単体GFlops（別指標）なので tileqr のグラフから分離する。
+# 旧 parquet（kind列なし）は全て tileqr 扱いにフォールバック。
+if not df.empty and "kind" in df.columns:
+    n_ssrfb = int((df["kind"] == "ssrfb").sum())
+    df = df[df["kind"] == "tileqr"].copy()
+
+has_data = not df.empty
 
 if has_data:
     n_labels = df["label"].nunique()

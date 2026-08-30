@@ -29,11 +29,16 @@ x-common: &common
     - tileqr_store:/app/store
     - tileqr_output:/app/output
     - tileqr_plan:/app/plan
+    - tileqr_data:/app/data_repo
 
 services:
   dashboard:
     <<: *common
     container_name: tileqr-dashboard
+    # 起動時に tileQR_data を取得（dashboard サービスだけで実行して二重取得を避ける）
+    environment:
+      - DASHBOARD_TOKEN=${DASHBOARD_TOKEN:-}
+      - TILEQR_SYNC_ON_START=1
     command:
       - uv
       - run
@@ -76,6 +81,7 @@ volumes:
   tileqr_store:
   tileqr_output:
   tileqr_plan:
+  tileqr_data:
 
 # --- ZimaOS / CasaOS アプリストア用メタデータ ---------------------------------
 # ZimaOS の「独自アプリをインストール」からこの compose を取り込むと、

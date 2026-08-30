@@ -3,6 +3,7 @@ inbox/
 store/
 output/
 plan/
+data_repo/
 *.parquet
 *.csv
 .env

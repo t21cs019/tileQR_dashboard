@@ -29,10 +29,13 @@ tileQR_dashboard/
 ├── store/runs.parquet           # 統合テーブル（.gitignore）
 ├── output/                      # 生成グラフ（.gitignore）
 ├── plan/<key>/PROGRESS.md       # 計測プラン（受信・編集。.gitignore）
+├── data_repo/                   # tileQR_data から取得したキャッシュ（.gitignore）
 ├── src/tileqr_dashboard/
 │   ├── adapters/{manual,onedrive}.py
-│   ├── sync_pull.py             # 取得 → store再構築
-│   ├── ingest.py                # CSV+meta 読み込み・統合
+│   ├── datarepo.py              # tileQR_data 取得＋derived→統合テーブル整形（主データ源）
+│   ├── sync_data.py             # tileQR_data 取得 → store再構築（起動時/更新ボタン/cron）
+│   ├── sync_pull.py             # inbox（補助）取得 → store再構築
+│   ├── ingest.py                # CSV+meta 読み込み・統合（datarepo と inbox を合成）
 │   ├── metrics.py               # 計算ヘルパ（キャッシュ量・理論式）
 │   ├── receiver.py              # 受信API（HTTPアップロード・プラン往復同期）
 │   ├── plan.py                  # PROGRESS.md の読み書き（plasma-bench と互換）
@@ -41,10 +44,10 @@ tileQR_dashboard/
 │   ├── app.py                   # Streamlit UI（Webダッシュボード + 計測プラン編集）
 │   └── plots.py                 # Plotly図ビルダ
 ├── docker-compose.yml           # ZimaOS/Docker（dashboard + receiver）
-├── docker/entrypoint.sh         # 初回起動時の config seed・データ用意
+├── docker/entrypoint.sh         # 初回起動時の config seed・tileQR_data 取得
 ├── .github/workflows/docker-publish.yml  # GHCR へイメージ公開
 ├── deploy/tileqr-dashboard.service.example   # 常時稼働(systemd)サンプル
-├── run_sync.sh / run_viz.sh / run_dashboard.sh / run_receiver.sh
+├── run_sync_data.sh / run_sync.sh / run_viz.sh / run_dashboard.sh / run_receiver.sh
 ├── VERSIONING.md / ROADMAP.md
 └── pyproject.toml
 ```
@@ -160,9 +163,33 @@ docker compose up -d --build
   ソースを足すときは config ボリューム内の `sources.toml` を編集して receiver を再起動。
 - 受信APIに認証をかけるなら `.env` に `DASHBOARD_TOKEN` を設定（`.env.example` 参照）。
 
-## データ受け取りの自動化（受信API）
+## データ源: tileQR_data（主）
 
-計測機（**plasma-bench**）から結果を**手動**または **HTTP** で入れられる:
+計測データは GitHub リポジトリ **[`tileQR_data`](https://github.com/t21cs019/tileQR_data)**
+で一元管理する。ダッシュボードはそこの**組み立て済み derived データ**を主データ源として読む。
+
+- 取得するのは `derived/qr_sweep.parquet`（tileqr）・`derived/ssrfb.parquet`・`machines.yaml`
+  の3ファイルだけ（git 不要・HTTPS で数MB）。`machines.yaml` の
+  `architectures` / `configs` / `nodes` から CPU 諸元・キャッシュを補完する。
+- **識別単位(label)は `config`**（例 `aoba-b_s2_smt-off`）。sockets 数・SMT の違いを
+  別系列として区別する（`node` は host として平均集約）。CPU モデル名は別列で表示。
+- 取得タイミング: **コンテナ起動時に自動取得**（dashboard サービス）＋サイドバーの
+  **「tileQR_data から更新」**ボタンでいつでも再取得。
+
+```bash
+# ローカル/手動で取得し直す
+bash run_sync_data.sh
+# 取得元を別ブランチ/フォークに変える場合
+TILEQR_DATA_BASE=https://raw.githubusercontent.com/<owner>/<repo>/<ref> bash run_sync_data.sh
+```
+
+inbox（下記の受信API・手動アップロード）は**補助**扱いで、tileQR_data と合わせて表示できる
+（サイドバーの「データ源」で `tileQR_data` / `inbox` を切り替え可能。`origin` 列で区別）。
+
+## データ受け取りの自動化（受信API・補助）
+
+tileQR_data に載せる前の一時的な確認用に、計測機（**plasma-bench**）から結果を
+**手動**または **HTTP** で直接入れることもできる（補助経路）:
 
 - **手動アップロード**: ダッシュボード左サイドバーの「CSV手動アップロード」から、
   取り込み先ソースを選んで CSV / `*.meta.json` を投入 → その場で store 再構築。

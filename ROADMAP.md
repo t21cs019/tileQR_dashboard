@@ -34,9 +34,12 @@ tileQR_dashboard の今後の機能追加・改善のメモ。`[x]` は実装済
 - [ ] `run_sync.sh` の定期実行（cron / タスクスケジューラ）
 - [ ] README にダッシュボードのスクリーンショット
 
-## データ受け取り・計測プラン連携
-- [x] 受信API（`receiver.py`）: 計測機からのCSV/メタHTTPアップロード → 自動 store 再構築
-- [x] ブラウザからのCSV手動アップロード（サイドバー）
+## データ源・受け取り・計測プラン連携
+- [x] tileQR_data を主データ源に（derived parquet + machines.yaml を HTTPS取得、config単位のlabel）
+- [x] 起動時自動取得＋サイドバー「tileQR_data から更新」ボタン（`datarepo.py` / `sync_data.py`）
+- [x] ssrfb を tileqr グラフから分離（`kind` タグ）／データ源フィルタ（`origin`）
+- [x] 受信API（`receiver.py`）: 計測機からのCSV/メタHTTPアップロード → 自動 store 再構築（補助）
+- [x] ブラウザからのCSV手動アップロード（サイドバー・補助）
 - [x] 計測プラン（plasma-bench の `PROGRESS.md`）の閲覧・編集タブ（往復同期）
 - [x] plasma-bench 側 `sync_results.sh http` / `sync_plan.sh`（push/pull）
 
@@ -68,4 +71,6 @@ tileQR_dashboard の今後の機能追加・改善のメモ。`[x]` は実装済
 v0.1.0 初版 → v0.2.0 折れ線 → v0.3.0 CPUプリセット →
 v0.4.0 複数size対応 → v0.5.0 折れ線の複数選択・散布図の軸変更・PNGエクスポート →
 v0.6.0 CPUプリセット拡充・calc運用変更 →
-v0.7.0 ZimaOS/Docker Compose対応・受信API（HTTP/手動アップロード）・計測プラン編集タブ（往復同期）
+v0.7.0 ZimaOS/Docker Compose対応・受信API（HTTP/手動アップロード）・計測プラン編集タブ（往復同期）→
+v0.7.1 ssrfb を tileqr グラフから分離（kind タグ）→
+v0.8.0 tileQR_data を主データ源に（derived parquet 取得・config単位のlabel・起動時自動＋更新ボタン）

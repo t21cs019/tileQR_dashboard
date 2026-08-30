@@ -16,6 +16,8 @@ OUTPUT_DIR = ROOT / "output"
 # 計測プラン（plasma-bench の PROGRESS.md）をソースごとに保管する場所。
 # plan/<source_key>/PROGRESS.md（HTTP受信でアップロード、ダッシュボードで編集）
 PLAN_DIR = ROOT / "plan"
+# tileQR_data リポジトリから取得した derived/ 等のローカルキャッシュ
+DATA_REPO_DIR = ROOT / "data_repo"
 
 RUNS_PARQUET = STORE_DIR / "runs.parquet"
 

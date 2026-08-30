@@ -15,6 +15,9 @@ output/*.pdf
 plan/**
 !plan/.gitkeep
 
+# tileQR_data から取得したキャッシュ（実行時に再取得できるため除外）
+data_repo/
+
 # inbox/ のサブフォルダ自体は残す（.gitkeep）
 !inbox/onedrive/.gitkeep
 !inbox/manual/.gitkeep

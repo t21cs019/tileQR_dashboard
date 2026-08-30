@@ -1539,7 +1539,7 @@ wheels = [
 
 [[package]]
 name = "tileqr-dashboard"
-version = "0.7.0"
+version = "0.8.0"
 source = { editable = "." }
 dependencies = [
     { name = "fastapi" },
@@ -1548,6 +1548,7 @@ dependencies = [
     { name = "plotly" },
     { name = "pyarrow" },
     { name = "python-multipart" },
+    { name = "pyyaml" },
     { name = "seaborn" },
     { name = "streamlit" },
     { name = "uvicorn", extra = ["standard"] },
@@ -1561,6 +1562,7 @@ requires-dist = [
     { name = "plotly", specifier = ">=5.18" },
     { name = "pyarrow", specifier = ">=14.0" },
     { name = "python-multipart", specifier = ">=0.0.9" },
+    { name = "pyyaml", specifier = ">=6.0" },
     { name = "seaborn", specifier = ">=0.13" },
     { name = "streamlit", specifier = ">=1.30" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.29" },

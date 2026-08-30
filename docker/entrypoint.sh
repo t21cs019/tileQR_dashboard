@@ -13,6 +13,14 @@ if [ -d /app/config.default ] && [ -z "$(ls -A /app/config 2>/dev/null || true)"
     cp -a /app/config.default/. /app/config/
 fi
 
-mkdir -p /app/inbox/manual /app/inbox/onedrive /app/store /app/output /app/plan
+mkdir -p /app/inbox/manual /app/inbox/onedrive /app/store /app/output /app/plan /app/data_repo
+
+# 起動時に tileQR_data を取得して統合テーブルを作る（TILEQR_SYNC_ON_START=1 のサービスのみ）。
+# compose では dashboard サービスにだけ設定して二重取得を避ける。失敗しても起動は続行。
+if [ "${TILEQR_SYNC_ON_START:-0}" = "1" ]; then
+    echo "[entrypoint] 起動時に tileQR_data を取得します"
+    uv run python -m tileqr_dashboard.sync_data || \
+        echo "[entrypoint] tileQR_data 取得に失敗（起動は継続。UIの更新ボタンで再試行可）"
+fi
 
 exec "$@"

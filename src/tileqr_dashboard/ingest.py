@@ -25,12 +25,17 @@ from .config import Source, load_cpus, load_sources
 _CSV_COLS = ["threads", "size", "nb", "ib", "GFlops"]
 
 # メタ由来でテーブルに足す列（順序固定）
+#   kind   : tileqr | ssrfb（ssrfb は別指標なので tileqr グラフから分離）
+#   origin : tileQR_data（主データ源）| inbox（HTTP受信・手動アップロードの補助）
 _META_COLS = [
     "source_key", "host", "label", "cpu_model",
     "sockets", "cores_per_socket", "threads_per_core", "numa_nodes",
     "l1d_per_core_kb", "l2_per_core_kb", "l3_per_socket_mb",
-    "kind", "src_file",
+    "kind", "origin", "src_file",
 ]
+
+# 統合テーブルの全列（inbox / tileQR_data 双方でこの列順に揃える）
+ALL_COLS = _CSV_COLS + _META_COLS
 
 
 def _detect_kind(csv_path: Path, columns) -> str:
@@ -123,6 +128,7 @@ def _read_one(
     for col, val in meta.items():
         df[col] = val
     df["kind"] = kind
+    df["origin"] = "inbox"
     return df
 
 
@@ -137,15 +143,15 @@ def collect_csvs(sources: dict[str, Source]) -> list[tuple[Path, Source]]:
     return found
 
 
-def build_store(sources: dict[str, Source] | None = None) -> pd.DataFrame:
-    """inbox を走査して統合テーブルを作り、parquet に保存して返す。"""
+def build_inbox_frame(sources: dict[str, Source] | None = None) -> pd.DataFrame:
+    """inbox（HTTP受信・手動アップロードの補助データ）を走査して1枚に統合する。
+
+    保存はしない。origin="inbox" のフレームを返す（build_store が主源と合わせる）。
+    """
     sources = sources or load_sources()
     items = collect_csvs(sources)
-
     if not items:
-        print("[ingest] 取り込めるCSVがありません（inbox が空）")
-        empty = pd.DataFrame(columns=_CSV_COLS + _META_COLS)
-        return empty
+        return pd.DataFrame(columns=ALL_COLS)
 
     cpus = load_cpus()
     frames = []
@@ -156,11 +162,41 @@ def build_store(sources: dict[str, Source] | None = None) -> pd.DataFrame:
             print(f"  [ok] {source.key}: {csv_path.name} ({len(df)} 行)")
 
     if not frames:
-        empty = pd.DataFrame(columns=_CSV_COLS + _META_COLS)
-        return empty
+        return pd.DataFrame(columns=ALL_COLS)
+    return pd.concat(frames, ignore_index=True)[ALL_COLS]
 
-    table = pd.concat(frames, ignore_index=True)
-    table = table[_CSV_COLS + _META_COLS]
+
+def build_store(
+    sources: dict[str, Source] | None = None,
+    *,
+    include_datarepo: bool = True,
+    include_inbox: bool = True,
+) -> pd.DataFrame:
+    """統合テーブルを作り、parquet に保存して返す。
+
+    主データ源 tileQR_data（キャッシュ済み derived）と、補助の inbox を合わせる。
+    tileQR_data はネットワーク取得しない（datarepo.sync が先に fetch 済みの前提）。
+    """
+    frames: list[pd.DataFrame] = []
+
+    if include_datarepo:
+        from . import datarepo  # 循環回避のため関数内 import
+        dr = datarepo.build_runs()
+        if not dr.empty:
+            frames.append(dr)
+            print(f"  [datarepo] {len(dr)} 行（tileQR_data）")
+
+    if include_inbox:
+        ib = build_inbox_frame(sources)
+        if not ib.empty:
+            frames.append(ib)
+            print(f"  [inbox] {len(ib)} 行（補助）")
+
+    if frames:
+        table = pd.concat(frames, ignore_index=True)[ALL_COLS]
+    else:
+        print("[ingest] 取り込めるデータがありません（tileQR_data 未取得・inbox 空）")
+        table = pd.DataFrame(columns=ALL_COLS)
 
     paths.STORE_DIR.mkdir(parents=True, exist_ok=True)
     table.to_parquet(paths.RUNS_PARQUET, index=False)
